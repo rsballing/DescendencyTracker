@@ -3,6 +3,8 @@ package family.balling.descendencytracker.domain;
 import family.balling.descendencytracker.domain.enums.DatePrecision;
 import family.balling.descendencytracker.domain.enums.ReviewedStatus;
 import family.balling.descendencytracker.domain.enums.Sex;
+import family.balling.descendencytracker.domain.enums.StewardshipStatus;
+import family.balling.descendencytracker.domain.enums.SyncStatus;
 
 public class Person {
     private Long personId;
@@ -18,11 +20,18 @@ public class Person {
     private DatePrecision birthDatePrecision = DatePrecision.UNKNOWN;
     private DatePrecision deathDatePrecision = DatePrecision.UNKNOWN;
     private ReviewedStatus reviewedStatus = ReviewedStatus.NOT_REVIEWED;
+    private String lastReviewedOn;
+    private StewardshipStatus stewardshipStatus = StewardshipStatus.UNASSIGNED;
     private String notes;
     private boolean root;
     private boolean deleted;
     private String createdAt;
     private String updatedAt;
+    private String deletedAt;
+    private int version = 1;
+    private SyncStatus syncStatus = SyncStatus.LOCAL_ONLY;
+    private String lastSyncedAt;
+    private String lastModifiedByDevice;
 
     public Person() {
     }
@@ -41,11 +50,18 @@ public class Person {
         this.birthDatePrecision = other.birthDatePrecision;
         this.deathDatePrecision = other.deathDatePrecision;
         this.reviewedStatus = other.reviewedStatus;
+        this.lastReviewedOn = other.lastReviewedOn;
+        this.stewardshipStatus = other.stewardshipStatus;
         this.notes = other.notes;
         this.root = other.root;
         this.deleted = other.deleted;
         this.createdAt = other.createdAt;
         this.updatedAt = other.updatedAt;
+        this.deletedAt = other.deletedAt;
+        this.version = other.version;
+        this.syncStatus = other.syncStatus;
+        this.lastSyncedAt = other.lastSyncedAt;
+        this.lastModifiedByDevice = other.lastModifiedByDevice;
     }
 
     public Long getPersonId() {
@@ -152,6 +168,22 @@ public class Person {
         this.reviewedStatus = reviewedStatus;
     }
 
+    public String getLastReviewedOn() {
+        return lastReviewedOn;
+    }
+
+    public void setLastReviewedOn(String lastReviewedOn) {
+        this.lastReviewedOn = lastReviewedOn;
+    }
+
+    public StewardshipStatus getStewardshipStatus() {
+        return stewardshipStatus;
+    }
+
+    public void setStewardshipStatus(StewardshipStatus stewardshipStatus) {
+        this.stewardshipStatus = stewardshipStatus;
+    }
+
     public String getNotes() {
         return notes;
     }
@@ -190,6 +222,46 @@ public class Person {
 
     public void setUpdatedAt(String updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(String deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = version;
+    }
+
+    public SyncStatus getSyncStatus() {
+        return syncStatus;
+    }
+
+    public void setSyncStatus(SyncStatus syncStatus) {
+        this.syncStatus = syncStatus;
+    }
+
+    public String getLastSyncedAt() {
+        return lastSyncedAt;
+    }
+
+    public void setLastSyncedAt(String lastSyncedAt) {
+        this.lastSyncedAt = lastSyncedAt;
+    }
+
+    public String getLastModifiedByDevice() {
+        return lastModifiedByDevice;
+    }
+
+    public void setLastModifiedByDevice(String lastModifiedByDevice) {
+        this.lastModifiedByDevice = lastModifiedByDevice;
     }
 
     public String getDisplayName() {

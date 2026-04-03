@@ -1,6 +1,7 @@
 package family.balling.descendencytracker.domain;
 
 import family.balling.descendencytracker.domain.enums.OrdinanceStatus;
+import family.balling.descendencytracker.domain.enums.SyncStatus;
 
 public class SpouseLink {
     private Long spouseLinkId;
@@ -17,6 +18,11 @@ public class SpouseLink {
     private boolean deleted;
     private String createdAt;
     private String updatedAt;
+    private String deletedAt;
+    private int version = 1;
+    private SyncStatus syncStatus = SyncStatus.LOCAL_ONLY;
+    private String lastSyncedAt;
+    private String lastModifiedByDevice;
 
     public Long getSpouseLinkId() {
         return spouseLinkId;
@@ -128,6 +134,46 @@ public class SpouseLink {
 
     public void setUpdatedAt(String updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(String deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = version;
+    }
+
+    public SyncStatus getSyncStatus() {
+        return syncStatus;
+    }
+
+    public void setSyncStatus(SyncStatus syncStatus) {
+        this.syncStatus = syncStatus;
+    }
+
+    public String getLastSyncedAt() {
+        return lastSyncedAt;
+    }
+
+    public void setLastSyncedAt(String lastSyncedAt) {
+        this.lastSyncedAt = lastSyncedAt;
+    }
+
+    public String getLastModifiedByDevice() {
+        return lastModifiedByDevice;
+    }
+
+    public void setLastModifiedByDevice(String lastModifiedByDevice) {
+        this.lastModifiedByDevice = lastModifiedByDevice;
     }
 
     public Long getOtherPersonId(long selectedPersonId) {

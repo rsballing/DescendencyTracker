@@ -3,6 +3,7 @@ package family.balling.descendencytracker.app;
 import family.balling.descendencytracker.application.BackupService;
 import family.balling.descendencytracker.application.OrdinanceEligibilityService;
 import family.balling.descendencytracker.application.OrdinanceService;
+import family.balling.descendencytracker.application.PersonCsvService;
 import family.balling.descendencytracker.application.PersonService;
 import family.balling.descendencytracker.application.RelationshipService;
 import family.balling.descendencytracker.application.WorkQueueService;
@@ -32,6 +33,7 @@ public class DescendencyTrackerApp extends Application {
             OrdinanceRepository ordinanceRepository = new SqliteOrdinanceRepository(databaseManager);
 
             PersonService personService = new PersonService(personRepository);
+            PersonCsvService personCsvService = new PersonCsvService(personRepository, personService);
             RelationshipService relationshipService = new RelationshipService(personRepository, relationshipRepository);
             OrdinanceService ordinanceService = new OrdinanceService(ordinanceRepository);
             OrdinanceEligibilityService ordinanceEligibilityService = new OrdinanceEligibilityService();
@@ -44,6 +46,7 @@ public class DescendencyTrackerApp extends Application {
 
             MainView mainView = new MainView(
                     personService,
+                    personCsvService,
                     relationshipService,
                     ordinanceService,
                     ordinanceEligibilityService,

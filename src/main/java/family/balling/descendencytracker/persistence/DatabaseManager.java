@@ -14,14 +14,24 @@ public class DatabaseManager {
     private final String jdbcUrl;
 
     public DatabaseManager() {
+        this(defaultDatabasePath());
+    }
+
+    public DatabaseManager(Path databasePath) {
         try {
-            Path appDirectory = Paths.get(System.getProperty("user.home"), ".descendency-tracker");
-            Files.createDirectories(appDirectory);
-            this.databasePath = appDirectory.resolve("descendency-tracker.db");
+            Path absolutePath = databasePath.toAbsolutePath();
+            if (absolutePath.getParent() != null) {
+                Files.createDirectories(absolutePath.getParent());
+            }
+            this.databasePath = absolutePath;
             this.jdbcUrl = "jdbc:sqlite:" + databasePath;
         } catch (IOException ex) {
             throw new RuntimeException("Could not create the application data directory.", ex);
         }
+    }
+
+    private static Path defaultDatabasePath() {
+        return Paths.get(System.getProperty("user.home"), ".descendency-tracker", "descendency-tracker.db");
     }
 
     public void initialize() {
@@ -33,6 +43,7 @@ public class DatabaseManager {
     }
 
     public Connection getConnection() throws SQLException {
+        ensureDriverLoaded();
         Connection connection = DriverManager.getConnection(jdbcUrl);
         try (Statement statement = connection.createStatement()) {
             statement.execute("PRAGMA foreign_keys = ON");
@@ -42,5 +53,13 @@ public class DatabaseManager {
 
     public Path getDatabasePath() {
         return databasePath;
+    }
+
+    private void ensureDriverLoaded() {
+        try {
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException ex) {
+            throw new RuntimeException("Could not load the SQLite JDBC driver.", ex);
+        }
     }
 }

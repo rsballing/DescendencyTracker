@@ -3,6 +3,7 @@ package family.balling.descendencytracker.ui;
 import family.balling.descendencytracker.application.BackupService;
 import family.balling.descendencytracker.application.OrdinanceEligibilityService;
 import family.balling.descendencytracker.application.OrdinanceService;
+import family.balling.descendencytracker.application.PersonCsvService;
 import family.balling.descendencytracker.application.PersonService;
 import family.balling.descendencytracker.application.RelationshipService;
 import family.balling.descendencytracker.application.WorkQueueService;
@@ -13,6 +14,7 @@ import family.balling.descendencytracker.domain.PersonOrdinanceStatus;
 import family.balling.descendencytracker.domain.SpouseLink;
 import family.balling.descendencytracker.domain.WorkQueueRow;
 import family.balling.descendencytracker.domain.enums.OrdinanceStatus;
+import family.balling.descendencytracker.domain.enums.StewardshipStatus;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -59,6 +61,7 @@ public class MainView extends BorderPane {
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
 
     private final PersonService personService;
+    private final PersonCsvService personCsvService;
     private final RelationshipService relationshipService;
     private final OrdinanceService ordinanceService;
     private final OrdinanceEligibilityService ordinanceEligibilityService;
@@ -88,6 +91,7 @@ public class MainView extends BorderPane {
 
     private final TextField searchField = new TextField();
     private final CheckBox rootOnlyCheckBox = new CheckBox("Only root");
+    private final ComboBox<StewardshipStatus> stewardshipFilterCombo = new ComboBox<>();
 
     private final TextField workQueueSearchField = new TextField();
     private final CheckBox workQueueActionableOnlyCheckBox = new CheckBox("Open/Soon only");
@@ -111,12 +115,14 @@ public class MainView extends BorderPane {
     private final TextArea ordinanceNotesArea = new TextArea();
 
     public MainView(PersonService personService,
+                    PersonCsvService personCsvService,
                     RelationshipService relationshipService,
                     OrdinanceService ordinanceService,
                     OrdinanceEligibilityService ordinanceEligibilityService,
                     BackupService backupService,
                     WorkQueueService workQueueService) {
         this.personService = personService;
+        this.personCsvService = personCsvService;
         this.relationshipService = relationshipService;
         this.ordinanceService = ordinanceService;
         this.ordinanceEligibilityService = ordinanceEligibilityService;
@@ -134,6 +140,8 @@ public class MainView extends BorderPane {
         Button deleteButton = new Button("Delete Person");
         Button setRootButton = new Button("Set Root");
         Button refreshButton = new Button("Refresh");
+        Button exportCsvButton = new Button("Export CSV");
+        Button importCsvButton = new Button("Import CSV");
         Button exportBackupButton = new Button("Export Backup");
         Button importBackupButton = new Button("Import Backup");
 
@@ -142,6 +150,8 @@ public class MainView extends BorderPane {
         deleteButton.setOnAction(event -> deleteSelectedPerson());
         setRootButton.setOnAction(event -> setSelectedAsRoot());
         refreshButton.setOnAction(event -> refreshPeople());
+        exportCsvButton.setOnAction(event -> exportPeopleCsv());
+        importCsvButton.setOnAction(event -> importPeopleCsv());
         exportBackupButton.setOnAction(event -> exportBackup());
         importBackupButton.setOnAction(event -> importBackup());
 
@@ -151,6 +161,8 @@ public class MainView extends BorderPane {
                 deleteButton,
                 setRootButton,
                 refreshButton,
+                exportCsvButton,
+                importCsvButton,
                 exportBackupButton,
                 importBackupButton
         );
@@ -307,6 +319,44 @@ public class MainView extends BorderPane {
         }
     }
 
+    private void exportPeopleCsv() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Export People CSV");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+        chooser.setInitialFileName("descendencytracker-people.csv");
+
+        File selectedFile = chooser.showSaveDialog(getCurrentWindow());
+        if (selectedFile == null) {
+            return;
+        }
+
+        try {
+            Path exportedPath = personCsvService.exportPeople(selectedFile.toPath());
+            showInfo("CSV Exported", "People exported to:\n" + exportedPath);
+        } catch (Exception ex) {
+            showError("Could not export people CSV.", ex);
+        }
+    }
+
+    private void importPeopleCsv() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Import People CSV");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+
+        File selectedFile = chooser.showOpenDialog(getCurrentWindow());
+        if (selectedFile == null) {
+            return;
+        }
+
+        try {
+            int importedCount = personCsvService.importPeople(selectedFile.toPath());
+            refreshPeople();
+            showInfo("CSV Imported", "Imported " + importedCount + " people from:\n" + selectedFile.toPath().toAbsolutePath());
+        } catch (Exception ex) {
+            showError("Could not import people CSV.", ex);
+        }
+    }
+
     private Window getCurrentWindow() {
         return getScene() == null ? null : getScene().getWindow();
     }
@@ -325,6 +375,8 @@ public class MainView extends BorderPane {
 
         searchField.textProperty().addListener((obs, oldValue, newValue) -> applyPersonFilter());
         rootOnlyCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> applyPersonFilter());
+        stewardshipFilterCombo.getItems().setAll(StewardshipStatus.values());
+        stewardshipFilterCombo.valueProperty().addListener((obs, oldValue, newValue) -> applyPersonFilter());
     }
 
     private ToolBar buildFilterToolBar() {
@@ -335,18 +387,22 @@ public class MainView extends BorderPane {
                 new Label("Find"),
                 searchField,
                 clearFiltersButton,
-                rootOnlyCheckBox
+                rootOnlyCheckBox,
+                new Label("Stewardship"),
+                stewardshipFilterCombo
         );
     }
 
     private void clearPersonFilters() {
         searchField.clear();
         rootOnlyCheckBox.setSelected(false);
+        stewardshipFilterCombo.setValue(null);
     }
 
     private void applyPersonFilter() {
         String searchText = searchField.getText() == null ? "" : searchField.getText().trim().toLowerCase();
         boolean rootOnly = rootOnlyCheckBox.isSelected();
+        StewardshipStatus stewardshipFilter = stewardshipFilterCombo.getValue();
 
         filteredPeople.setPredicate(person -> {
             if (person == null) {
@@ -354,6 +410,10 @@ public class MainView extends BorderPane {
             }
 
             if (rootOnly && !person.isRoot()) {
+                return false;
+            }
+
+            if (stewardshipFilter != null && person.getStewardshipStatus() != stewardshipFilter) {
                 return false;
             }
 
@@ -846,6 +906,18 @@ public class MainView extends BorderPane {
         );
         reviewedColumn.setPrefWidth(140);
 
+        TableColumn<Person, String> stewardshipColumn = new TableColumn<>("Stewardship");
+        stewardshipColumn.setCellValueFactory(data ->
+                new ReadOnlyStringWrapper(data.getValue().getStewardshipStatus().name())
+        );
+        stewardshipColumn.setPrefWidth(150);
+
+        TableColumn<Person, String> syncColumn = new TableColumn<>("Sync");
+        syncColumn.setCellValueFactory(data ->
+                new ReadOnlyStringWrapper(data.getValue().getSyncStatus().name())
+        );
+        syncColumn.setPrefWidth(130);
+
         personTable.getColumns().addAll(
                 rootColumn,
                 preferredNameColumn,
@@ -856,7 +928,9 @@ public class MainView extends BorderPane {
                 livingColumn,
                 birthColumn,
                 deathColumn,
-                reviewedColumn
+                reviewedColumn,
+                stewardshipColumn,
+                syncColumn
         );
 
         personTable.setRowFactory(table -> {
@@ -1835,9 +1909,16 @@ public class MainView extends BorderPane {
         builder.append("Death: ").append(nullSafe(person.getDeathDateText())).append('\n');
         builder.append("Death Precision: ").append(person.getDeathDatePrecision()).append('\n');
         builder.append("Reviewed Status: ").append(person.getReviewedStatus()).append('\n');
+        builder.append("Last Reviewed On: ").append(nullSafe(person.getLastReviewedOn())).append('\n');
+        builder.append("Stewardship: ").append(person.getStewardshipStatus()).append('\n');
         builder.append("Root Person: ").append(person.isRoot() ? "Yes" : "No").append('\n');
         builder.append("Created At: ").append(nullSafe(person.getCreatedAt())).append('\n');
         builder.append("Updated At: ").append(nullSafe(person.getUpdatedAt())).append('\n');
+        builder.append("Deleted At: ").append(nullSafe(person.getDeletedAt())).append('\n');
+        builder.append("Version: ").append(person.getVersion()).append('\n');
+        builder.append("Sync Status: ").append(person.getSyncStatus()).append('\n');
+        builder.append("Last Synced At: ").append(nullSafe(person.getLastSyncedAt())).append('\n');
+        builder.append("Modified By Device: ").append(nullSafe(person.getLastModifiedByDevice())).append('\n');
         builder.append('\n');
         builder.append("Notes:\n").append(nullSafe(person.getNotes()));
 

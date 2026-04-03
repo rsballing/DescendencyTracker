@@ -4,6 +4,7 @@ import family.balling.descendencytracker.domain.Person;
 import family.balling.descendencytracker.domain.enums.DatePrecision;
 import family.balling.descendencytracker.domain.enums.ReviewedStatus;
 import family.balling.descendencytracker.domain.enums.Sex;
+import family.balling.descendencytracker.domain.enums.StewardshipStatus;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
@@ -40,6 +41,7 @@ public class PersonEditorDialog extends Dialog<Person> {
     private final ComboBox<DatePrecision> deathPrecisionComboBox = new ComboBox<>();
 
     private final ComboBox<ReviewedStatus> reviewedStatusComboBox = new ComboBox<>();
+    private final ComboBox<StewardshipStatus> stewardshipStatusComboBox = new ComboBox<>();
     private final TextArea notesArea = new TextArea();
 
     public PersonEditorDialog(Person existingPerson) {
@@ -86,6 +88,9 @@ public class PersonEditorDialog extends Dialog<Person> {
             );
             result.setReviewedStatus(
                     reviewedStatusComboBox.getValue() == null ? ReviewedStatus.NOT_REVIEWED : reviewedStatusComboBox.getValue()
+            );
+            result.setStewardshipStatus(
+                    stewardshipStatusComboBox.getValue() == null ? StewardshipStatus.UNASSIGNED : stewardshipStatusComboBox.getValue()
             );
             result.setNotes(clean(notesArea.getText()));
 
@@ -134,6 +139,9 @@ public class PersonEditorDialog extends Dialog<Person> {
         grid.add(new Label("Reviewed Status"), 0, row);
         grid.add(reviewedStatusComboBox, 1, row++);
 
+        grid.add(new Label("Stewardship"), 0, row);
+        grid.add(stewardshipStatusComboBox, 1, row++);
+
         grid.add(new Label("Notes"), 0, row);
         grid.add(notesArea, 1, row);
 
@@ -155,6 +163,7 @@ public class PersonEditorDialog extends Dialog<Person> {
         birthPrecisionComboBox.getItems().setAll(DatePrecision.values());
         deathPrecisionComboBox.getItems().setAll(DatePrecision.values());
         reviewedStatusComboBox.getItems().setAll(ReviewedStatus.values());
+        stewardshipStatusComboBox.getItems().setAll(StewardshipStatus.values());
 
         preferredNameField.setPromptText("Required");
         fsPidField.setPromptText("Optional, e.g. KWZ3-ABC");
@@ -165,6 +174,7 @@ public class PersonEditorDialog extends Dialog<Person> {
         birthPrecisionComboBox.setValue(DatePrecision.UNKNOWN);
         deathPrecisionComboBox.setValue(DatePrecision.UNKNOWN);
         reviewedStatusComboBox.setValue(ReviewedStatus.NOT_REVIEWED);
+        stewardshipStatusComboBox.setValue(StewardshipStatus.UNASSIGNED);
 
         livingCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateLivingState());
     }
@@ -195,6 +205,11 @@ public class PersonEditorDialog extends Dialog<Person> {
 
         reviewedStatusComboBox.setValue(
                 existingPerson.getReviewedStatus() == null ? ReviewedStatus.NOT_REVIEWED : existingPerson.getReviewedStatus()
+        );
+        stewardshipStatusComboBox.setValue(
+                existingPerson.getStewardshipStatus() == null
+                        ? StewardshipStatus.UNASSIGNED
+                        : existingPerson.getStewardshipStatus()
         );
 
         notesArea.setText(nullSafe(existingPerson.getNotes()));

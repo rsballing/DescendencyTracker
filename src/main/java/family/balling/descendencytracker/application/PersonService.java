@@ -1,8 +1,10 @@
 package family.balling.descendencytracker.application;
 
 import family.balling.descendencytracker.domain.Person;
+import family.balling.descendencytracker.domain.enums.ReviewedStatus;
 import family.balling.descendencytracker.repository.PersonRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -40,6 +42,17 @@ public class PersonService {
         return personRepository.save(person);
     }
 
+    public Person saveImportedPerson(Person person) {
+        if (person == null) {
+            throw new IllegalArgumentException("Person cannot be null.");
+        }
+
+        normalize(person);
+        validate(person);
+
+        return personRepository.saveImported(person);
+    }
+
     public void deletePerson(long personId) {
         personRepository.findById(personId)
                 .orElseThrow(() -> new IllegalArgumentException("Person not found: " + personId));
@@ -62,6 +75,16 @@ public class PersonService {
         person.setBirthDateText(trimToNull(person.getBirthDateText()));
         person.setDeathDateText(trimToNull(person.getDeathDateText()));
         person.setNotes(trimToNull(person.getNotes()));
+        person.setLastReviewedOn(trimToNull(person.getLastReviewedOn()));
+        person.setDeletedAt(trimToNull(person.getDeletedAt()));
+        person.setLastSyncedAt(trimToNull(person.getLastSyncedAt()));
+        person.setLastModifiedByDevice(trimToNull(person.getLastModifiedByDevice()));
+
+        if (person.getReviewedStatus() != null
+                && person.getReviewedStatus() != ReviewedStatus.NOT_REVIEWED
+                && person.getLastReviewedOn() == null) {
+            person.setLastReviewedOn(Instant.now().toString());
+        }
     }
 
     private void validate(Person person) {

@@ -10,9 +10,13 @@ public interface PersonRepository {
 
     Optional<Person> findById(long personId);
 
+    Optional<Person> findByStableUuid(String stableUuid);
+
     Optional<Person> findRootPerson();
 
     Person save(Person person);
+
+    Person saveImported(Person person);
 
     void softDelete(long personId);
 
