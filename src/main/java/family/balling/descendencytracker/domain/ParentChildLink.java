@@ -1,5 +1,7 @@
 package family.balling.descendencytracker.domain;
 
+import family.balling.descendencytracker.domain.enums.SyncStatus;
+
 public class ParentChildLink {
     private Long linkId;
     private String stableUuid;
@@ -12,6 +14,9 @@ public class ParentChildLink {
     private boolean deleted;
     private String createdAt;
     private String updatedAt;
+    private int version = 1;
+    private SyncStatus syncStatus = SyncStatus.LOCAL_ONLY;
+    private String lastSyncedAt;
 
     public Long getLinkId() {
         return linkId;
@@ -99,5 +104,29 @@ public class ParentChildLink {
 
     public void setUpdatedAt(String updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = Math.max(1, version);
+    }
+
+    public SyncStatus getSyncStatus() {
+        return syncStatus;
+    }
+
+    public void setSyncStatus(SyncStatus syncStatus) {
+        this.syncStatus = syncStatus == null ? SyncStatus.LOCAL_ONLY : syncStatus;
+    }
+
+    public String getLastSyncedAt() {
+        return lastSyncedAt;
+    }
+
+    public void setLastSyncedAt(String lastSyncedAt) {
+        this.lastSyncedAt = lastSyncedAt;
     }
 }

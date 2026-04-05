@@ -2,6 +2,7 @@ package family.balling.descendencytracker.persistence;
 
 import family.balling.descendencytracker.domain.PersonOrdinanceStatus;
 import family.balling.descendencytracker.domain.enums.OrdinanceStatus;
+import family.balling.descendencytracker.domain.enums.SyncStatus;
 import family.balling.descendencytracker.repository.OrdinanceRepository;
 
 import java.sql.Connection;
@@ -28,7 +29,10 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
                    endowment_status,
                    sealed_to_parents_status,
                    ordinance_notes,
-                   updated_at
+                   updated_at,
+                   version,
+                   sync_status,
+                   last_synced_at
             FROM person_ordinance_status
             WHERE person_id = ?
             """;
@@ -60,8 +64,11 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
                 endowment_status,
                 sealed_to_parents_status,
                 ordinance_notes,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                updated_at,
+                version,
+                sync_status,
+                last_synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(person_id) DO UPDATE SET
                 baptism_status = excluded.baptism_status,
                 confirmation_status = excluded.confirmation_status,
@@ -69,7 +76,10 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
                 endowment_status = excluded.endowment_status,
                 sealed_to_parents_status = excluded.sealed_to_parents_status,
                 ordinance_notes = excluded.ordinance_notes,
-                updated_at = excluded.updated_at
+                updated_at = excluded.updated_at,
+                version = person_ordinance_status.version + 1,
+                sync_status = 'LOCAL_ONLY',
+                last_synced_at = NULL
             """;
 
         String now = Instant.now().toString();
@@ -85,6 +95,9 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
             statement.setString(6, status.getSealedToParentsStatus().name());
             statement.setString(7, status.getOrdinanceNotes());
             statement.setString(8, now);
+            statement.setInt(9, Math.max(1, status.getVersion()));
+            statement.setString(10, safeSyncStatus(status.getSyncStatus()).name());
+            statement.setString(11, status.getLastSyncedAt());
 
             statement.executeUpdate();
 
@@ -104,6 +117,9 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
         status.setSealedToParentsStatus(readStatus(rs.getString("sealed_to_parents_status")));
         status.setOrdinanceNotes(rs.getString("ordinance_notes"));
         status.setUpdatedAt(rs.getString("updated_at"));
+        status.setVersion(rs.getInt("version"));
+        status.setSyncStatus(readSyncStatus(rs.getString("sync_status")));
+        status.setLastSyncedAt(rs.getString("last_synced_at"));
         return status;
     }
 
@@ -112,5 +128,16 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
             return OrdinanceStatus.UNKNOWN;
         }
         return OrdinanceStatus.valueOf(value);
+    }
+
+    private SyncStatus safeSyncStatus(SyncStatus syncStatus) {
+        return syncStatus == null ? SyncStatus.LOCAL_ONLY : syncStatus;
+    }
+
+    private SyncStatus readSyncStatus(String value) {
+        if (value == null || value.isBlank()) {
+            return SyncStatus.LOCAL_ONLY;
+        }
+        return SyncStatus.valueOf(value);
     }
 }

@@ -3,6 +3,7 @@ package family.balling.descendencytracker.domain;
 import family.balling.descendencytracker.domain.enums.DatePrecision;
 import family.balling.descendencytracker.domain.enums.ReviewedStatus;
 import family.balling.descendencytracker.domain.enums.Sex;
+import family.balling.descendencytracker.domain.enums.SyncStatus;
 
 public class Person {
     private Long personId;
@@ -23,6 +24,9 @@ public class Person {
     private boolean deleted;
     private String createdAt;
     private String updatedAt;
+    private int version = 1;
+    private SyncStatus syncStatus = SyncStatus.LOCAL_ONLY;
+    private String lastSyncedAt;
 
     public Person() {
     }
@@ -46,6 +50,9 @@ public class Person {
         this.deleted = other.deleted;
         this.createdAt = other.createdAt;
         this.updatedAt = other.updatedAt;
+        this.version = other.version;
+        this.syncStatus = other.syncStatus;
+        this.lastSyncedAt = other.lastSyncedAt;
     }
 
     public Long getPersonId() {
@@ -190,6 +197,30 @@ public class Person {
 
     public void setUpdatedAt(String updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = Math.max(1, version);
+    }
+
+    public SyncStatus getSyncStatus() {
+        return syncStatus;
+    }
+
+    public void setSyncStatus(SyncStatus syncStatus) {
+        this.syncStatus = syncStatus == null ? SyncStatus.LOCAL_ONLY : syncStatus;
+    }
+
+    public String getLastSyncedAt() {
+        return lastSyncedAt;
+    }
+
+    public void setLastSyncedAt(String lastSyncedAt) {
+        this.lastSyncedAt = lastSyncedAt;
     }
 
     public String getDisplayName() {

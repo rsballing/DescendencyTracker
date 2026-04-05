@@ -3,6 +3,7 @@ package family.balling.descendencytracker.persistence;
 import family.balling.descendencytracker.domain.ParentChildLink;
 import family.balling.descendencytracker.domain.SpouseLink;
 import family.balling.descendencytracker.domain.enums.OrdinanceStatus;
+import family.balling.descendencytracker.domain.enums.SyncStatus;
 import family.balling.descendencytracker.repository.RelationshipRepository;
 
 import java.sql.Connection;
@@ -34,6 +35,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                    pcl.is_deleted,
                    pcl.created_at,
                    pcl.updated_at,
+                   pcl.version,
+                   pcl.sync_status,
+                   pcl.last_synced_at,
                    p.preferred_name AS parent_preferred_name,
                    p.given_names AS parent_given_names,
                    p.surname AS parent_surname,
@@ -81,6 +85,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                    pcl.is_deleted,
                    pcl.created_at,
                    pcl.updated_at,
+                   pcl.version,
+                   pcl.sync_status,
+                   pcl.last_synced_at,
                    p.preferred_name AS parent_preferred_name,
                    p.given_names AS parent_given_names,
                    p.surname AS parent_surname,
@@ -133,6 +140,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                    sl.is_deleted,
                    sl.created_at,
                    sl.updated_at,
+                   sl.version,
+                   sl.sync_status,
+                   sl.last_synced_at,
                    a.preferred_name AS person_a_preferred_name,
                    a.given_names AS person_a_given_names,
                    a.surname AS person_a_surname,
@@ -170,6 +180,14 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
 
     @Override
     public ParentChildLink addParentChild(long parentPersonId, long childPersonId, Integer childOrder, String notes) {
+        ParentChildLink existingLink = findParentChildByPeople(parentPersonId, childPersonId);
+        if (existingLink != null) {
+            if (existingLink.isDeleted()) {
+                return restoreParentChild(existingLink.getLinkId(), parentPersonId, childPersonId, childOrder, notes);
+            }
+            return updateParentChild(existingLink.getLinkId(), parentPersonId, childPersonId, childOrder, notes);
+        }
+
         String sql = """
             INSERT INTO parent_child_link (
                 stable_uuid,
@@ -179,8 +197,11 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                 notes,
                 is_deleted,
                 created_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                updated_at,
+                version,
+                sync_status,
+                last_synced_at
+            ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
             """;
 
         String now = Instant.now().toString();
@@ -201,6 +222,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             statement.setString(5, notes);
             statement.setString(6, now);
             statement.setString(7, now);
+            statement.setInt(8, 1);
+            statement.setString(9, SyncStatus.LOCAL_ONLY.name());
+            statement.setString(10, null);
 
             statement.executeUpdate();
 
@@ -216,14 +240,78 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
         }
     }
 
-    @Override
-    public ParentChildLink updateParentChild(long linkId, long parentPersonId, long childPersonId, Integer childOrder, String notes) {
+    private ParentChildLink restoreParentChild(long linkId, long parentPersonId, long childPersonId, Integer childOrder, String notes) {
         String sql = """
             UPDATE parent_child_link
             SET parent_person_id = ?,
                 child_person_id = ?,
                 child_order = ?,
                 notes = ?,
+                is_deleted = 0,
+                version = version + 1,
+                sync_status = 'LOCAL_ONLY',
+                last_synced_at = NULL,
+                updated_at = ?
+            WHERE link_id = ?
+            """;
+
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            statement.setLong(1, parentPersonId);
+            statement.setLong(2, childPersonId);
+
+            if (childOrder == null) {
+                statement.setNull(3, java.sql.Types.INTEGER);
+            } else {
+                statement.setInt(3, childOrder);
+            }
+
+            statement.setString(4, notes);
+            statement.setString(5, Instant.now().toString());
+            statement.setLong(6, linkId);
+
+            int updated = statement.executeUpdate();
+            if (updated != 1) {
+                throw new RuntimeException("No parent-child link row was restored.");
+            }
+
+            return findParentChildById(linkId);
+        } catch (SQLException ex) {
+            throw new RuntimeException("Could not restore parent-child link.", ex);
+        }
+    }
+
+    @Override
+    public ParentChildLink updateParentChild(long linkId, long parentPersonId, long childPersonId, Integer childOrder, String notes) {
+        ParentChildLink existingLink = findParentChildByPeople(parentPersonId, childPersonId);
+        if (existingLink != null && existingLink.getLinkId() != null && existingLink.getLinkId() != linkId) {
+            ParentChildLink saved = existingLink.isDeleted()
+                    ? restoreParentChild(existingLink.getLinkId(), parentPersonId, childPersonId, childOrder, notes)
+                    : persistParentChildUpdate(existingLink.getLinkId(), parentPersonId, childPersonId, childOrder, notes);
+            softDeleteParentChild(linkId);
+            return saved;
+        }
+
+        return persistParentChildUpdate(linkId, parentPersonId, childPersonId, childOrder, notes);
+    }
+
+    private ParentChildLink persistParentChildUpdate(
+            long linkId,
+            long parentPersonId,
+            long childPersonId,
+            Integer childOrder,
+            String notes
+    ) {
+        String sql = """
+            UPDATE parent_child_link
+            SET parent_person_id = ?,
+                child_person_id = ?,
+                child_order = ?,
+                notes = ?,
+                version = version + 1,
+                sync_status = 'LOCAL_ONLY',
+                last_synced_at = NULL,
                 updated_at = ?
             WHERE link_id = ?
             """;
@@ -260,6 +348,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
         String sql = """
             UPDATE parent_child_link
             SET is_deleted = 1,
+                version = version + 1,
+                sync_status = 'LOCAL_ONLY',
+                last_synced_at = NULL,
                 updated_at = ?
             WHERE link_id = ?
             """;
@@ -287,6 +378,31 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
     ) {
         long normalizedA = Math.min(personAId, personBId);
         long normalizedB = Math.max(personAId, personBId);
+        SpouseLink existingLink = findSpouseByPeople(normalizedA, normalizedB);
+        if (existingLink != null) {
+            if (existingLink.isDeleted()) {
+                return restoreSpouse(
+                        existingLink.getSpouseLinkId(),
+                        normalizedA,
+                        normalizedB,
+                        marriageDateText,
+                        marriageNotes,
+                        sealingToSpouseStatus,
+                        sealingStatusDate,
+                        sealingNotes
+                );
+            }
+            return persistSpouseUpdate(
+                    existingLink.getSpouseLinkId(),
+                    normalizedA,
+                    normalizedB,
+                    marriageDateText,
+                    marriageNotes,
+                    sealingToSpouseStatus,
+                    sealingStatusDate,
+                    sealingNotes
+            );
+        }
 
         String sql = """
             INSERT INTO spouse_link (
@@ -300,8 +416,11 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                 sealing_notes,
                 is_deleted,
                 created_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                updated_at,
+                version,
+                sync_status,
+                last_synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
             """;
 
         String now = Instant.now().toString();
@@ -319,6 +438,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             statement.setString(8, sealingNotes);
             statement.setString(9, now);
             statement.setString(10, now);
+            statement.setInt(11, 1);
+            statement.setString(12, SyncStatus.LOCAL_ONLY.name());
+            statement.setString(13, null);
 
             statement.executeUpdate();
 
@@ -347,6 +469,108 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
     ) {
         long normalizedA = Math.min(personAId, personBId);
         long normalizedB = Math.max(personAId, personBId);
+        SpouseLink existingLink = findSpouseByPeople(normalizedA, normalizedB);
+        if (existingLink != null
+                && existingLink.getSpouseLinkId() != null
+                && existingLink.getSpouseLinkId() != spouseLinkId) {
+            SpouseLink saved = existingLink.isDeleted()
+                    ? restoreSpouse(
+                    existingLink.getSpouseLinkId(),
+                    normalizedA,
+                    normalizedB,
+                    marriageDateText,
+                    marriageNotes,
+                    sealingToSpouseStatus,
+                    sealingStatusDate,
+                    sealingNotes
+            )
+                    : persistSpouseUpdate(
+                    existingLink.getSpouseLinkId(),
+                    normalizedA,
+                    normalizedB,
+                    marriageDateText,
+                    marriageNotes,
+                    sealingToSpouseStatus,
+                    sealingStatusDate,
+                    sealingNotes
+            );
+            softDeleteSpouse(spouseLinkId);
+            return saved;
+        }
+
+        return persistSpouseUpdate(
+                spouseLinkId,
+                normalizedA,
+                normalizedB,
+                marriageDateText,
+                marriageNotes,
+                sealingToSpouseStatus,
+                sealingStatusDate,
+                sealingNotes
+        );
+    }
+
+    private SpouseLink restoreSpouse(
+            long spouseLinkId,
+            long personAId,
+            long personBId,
+            String marriageDateText,
+            String marriageNotes,
+            OrdinanceStatus sealingToSpouseStatus,
+            String sealingStatusDate,
+            String sealingNotes
+    ) {
+        String sql = """
+            UPDATE spouse_link
+            SET person_a_id = ?,
+                person_b_id = ?,
+                marriage_date_text = ?,
+                marriage_notes = ?,
+                sealing_to_spouse_status = ?,
+                sealing_status_date = ?,
+                sealing_notes = ?,
+                is_deleted = 0,
+                version = version + 1,
+                sync_status = 'LOCAL_ONLY',
+                last_synced_at = NULL,
+                updated_at = ?
+            WHERE spouse_link_id = ?
+            """;
+
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            statement.setLong(1, personAId);
+            statement.setLong(2, personBId);
+            statement.setString(3, marriageDateText);
+            statement.setString(4, marriageNotes);
+            statement.setString(5, safeStatus(sealingToSpouseStatus).name());
+            statement.setString(6, sealingStatusDate);
+            statement.setString(7, sealingNotes);
+            statement.setString(8, Instant.now().toString());
+            statement.setLong(9, spouseLinkId);
+
+            int updated = statement.executeUpdate();
+            if (updated != 1) {
+                throw new RuntimeException("No spouse link row was restored.");
+            }
+
+            return findSpouseById(spouseLinkId);
+        } catch (SQLException ex) {
+            throw new RuntimeException("Could not restore spouse link.", ex);
+        }
+    }
+
+    private SpouseLink persistSpouseUpdate(
+            long spouseLinkId,
+            long personAId,
+            long personBId,
+            String marriageDateText,
+            String marriageNotes,
+            OrdinanceStatus sealingToSpouseStatus,
+            String sealingStatusDate,
+            String sealingNotes
+    ) {
 
         String sql = """
             UPDATE spouse_link
@@ -357,6 +581,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                 sealing_to_spouse_status = ?,
                 sealing_status_date = ?,
                 sealing_notes = ?,
+                version = version + 1,
+                sync_status = 'LOCAL_ONLY',
+                last_synced_at = NULL,
                 updated_at = ?
             WHERE spouse_link_id = ?
             """;
@@ -364,8 +591,8 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
 
-            statement.setLong(1, normalizedA);
-            statement.setLong(2, normalizedB);
+            statement.setLong(1, personAId);
+            statement.setLong(2, personBId);
             statement.setString(3, marriageDateText);
             statement.setString(4, marriageNotes);
             statement.setString(5, safeStatus(sealingToSpouseStatus).name());
@@ -390,6 +617,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
         String sql = """
             UPDATE spouse_link
             SET is_deleted = 1,
+                version = version + 1,
+                sync_status = 'LOCAL_ONLY',
+                last_synced_at = NULL,
                 updated_at = ?
             WHERE spouse_link_id = ?
             """;
@@ -416,6 +646,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                    pcl.is_deleted,
                    pcl.created_at,
                    pcl.updated_at,
+                   pcl.version,
+                   pcl.sync_status,
+                   pcl.last_synced_at,
                    p.preferred_name AS parent_preferred_name,
                    p.given_names AS parent_given_names,
                    p.surname AS parent_surname,
@@ -445,6 +678,51 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
         }
     }
 
+    private ParentChildLink findParentChildByPeople(long parentPersonId, long childPersonId) {
+        String sql = """
+            SELECT pcl.link_id,
+                   pcl.stable_uuid,
+                   pcl.parent_person_id,
+                   pcl.child_person_id,
+                   pcl.child_order,
+                   pcl.notes,
+                   pcl.is_deleted,
+                   pcl.created_at,
+                   pcl.updated_at,
+                   pcl.version,
+                   pcl.sync_status,
+                   pcl.last_synced_at,
+                   p.preferred_name AS parent_preferred_name,
+                   p.given_names AS parent_given_names,
+                   p.surname AS parent_surname,
+                   c.preferred_name AS child_preferred_name,
+                   c.given_names AS child_given_names,
+                   c.surname AS child_surname
+            FROM parent_child_link pcl
+            JOIN person p ON p.person_id = pcl.parent_person_id
+            JOIN person c ON c.person_id = pcl.child_person_id
+            WHERE pcl.parent_person_id = ?
+              AND pcl.child_person_id = ?
+            """;
+
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            statement.setLong(1, parentPersonId);
+            statement.setLong(2, childPersonId);
+
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return mapParentChildRow(rs);
+                }
+            }
+
+            return null;
+        } catch (SQLException ex) {
+            throw new RuntimeException("Could not load parent-child link by people.", ex);
+        }
+    }
+
     private SpouseLink findSpouseById(long spouseLinkId) {
         String sql = """
             SELECT sl.spouse_link_id,
@@ -459,6 +737,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                    sl.is_deleted,
                    sl.created_at,
                    sl.updated_at,
+                   sl.version,
+                   sl.sync_status,
+                   sl.last_synced_at,
                    a.preferred_name AS person_a_preferred_name,
                    a.given_names AS person_a_given_names,
                    a.surname AS person_a_surname,
@@ -488,6 +769,54 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
         }
     }
 
+    private SpouseLink findSpouseByPeople(long personAId, long personBId) {
+        String sql = """
+            SELECT sl.spouse_link_id,
+                   sl.stable_uuid,
+                   sl.person_a_id,
+                   sl.person_b_id,
+                   sl.marriage_date_text,
+                   sl.marriage_notes,
+                   sl.sealing_to_spouse_status,
+                   sl.sealing_status_date,
+                   sl.sealing_notes,
+                   sl.is_deleted,
+                   sl.created_at,
+                   sl.updated_at,
+                   sl.version,
+                   sl.sync_status,
+                   sl.last_synced_at,
+                   a.preferred_name AS person_a_preferred_name,
+                   a.given_names AS person_a_given_names,
+                   a.surname AS person_a_surname,
+                   b.preferred_name AS person_b_preferred_name,
+                   b.given_names AS person_b_given_names,
+                   b.surname AS person_b_surname
+            FROM spouse_link sl
+            JOIN person a ON a.person_id = sl.person_a_id
+            JOIN person b ON b.person_id = sl.person_b_id
+            WHERE sl.person_a_id = ?
+              AND sl.person_b_id = ?
+            """;
+
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            statement.setLong(1, personAId);
+            statement.setLong(2, personBId);
+
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return mapSpouseRow(rs);
+                }
+            }
+
+            return null;
+        } catch (SQLException ex) {
+            throw new RuntimeException("Could not load spouse link by people.", ex);
+        }
+    }
+
     private ParentChildLink mapParentChildRow(ResultSet rs) throws SQLException {
         ParentChildLink link = new ParentChildLink();
         link.setLinkId(rs.getLong("link_id"));
@@ -506,6 +835,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
         link.setDeleted(rs.getInt("is_deleted") == 1);
         link.setCreatedAt(rs.getString("created_at"));
         link.setUpdatedAt(rs.getString("updated_at"));
+        link.setVersion(rs.getInt("version"));
+        link.setSyncStatus(readSyncStatus(rs.getString("sync_status")));
+        link.setLastSyncedAt(rs.getString("last_synced_at"));
         link.setParentDisplayName(buildDisplayName(
                 rs.getString("parent_preferred_name"),
                 rs.getString("parent_given_names"),
@@ -533,6 +865,9 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
         link.setDeleted(rs.getInt("is_deleted") == 1);
         link.setCreatedAt(rs.getString("created_at"));
         link.setUpdatedAt(rs.getString("updated_at"));
+        link.setVersion(rs.getInt("version"));
+        link.setSyncStatus(readSyncStatus(rs.getString("sync_status")));
+        link.setLastSyncedAt(rs.getString("last_synced_at"));
         link.setPersonADisplayName(buildDisplayName(
                 rs.getString("person_a_preferred_name"),
                 rs.getString("person_a_given_names"),
@@ -555,6 +890,13 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             return OrdinanceStatus.UNKNOWN;
         }
         return OrdinanceStatus.valueOf(value);
+    }
+
+    private SyncStatus readSyncStatus(String value) {
+        if (value == null || value.isBlank()) {
+            return SyncStatus.LOCAL_ONLY;
+        }
+        return SyncStatus.valueOf(value);
     }
 
     private String buildDisplayName(String preferredName, String givenNames, String surname) {

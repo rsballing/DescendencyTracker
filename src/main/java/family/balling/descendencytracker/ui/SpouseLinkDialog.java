@@ -4,11 +4,13 @@ import family.balling.descendencytracker.domain.Person;
 import family.balling.descendencytracker.domain.SpouseLink;
 import family.balling.descendencytracker.domain.enums.OrdinanceStatus;
 import family.balling.descendencytracker.domain.enums.Sex;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
@@ -16,11 +18,17 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.GridPane;
 
 import java.util.List;
 
 public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
+    private static final KeyCombination SUBMIT_SHORTCUT = new KeyCodeCombination(KeyCode.ENTER, KeyCombination.CONTROL_DOWN);
+
     private final ComboBox<Person> spouseComboBox = new ComboBox<>();
     private final CheckBox createNewPersonCheckBox = new CheckBox("Create a new spouse instead");
 
@@ -51,8 +59,12 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         getDialogPane().setContent(buildForm());
 
-        spouseComboBox.setItems(FXCollections.observableArrayList(candidates));
         spouseComboBox.setPrefWidth(320);
+        PersonSelectionSupport.configurePersonAutocomplete(
+                spouseComboBox,
+                candidates,
+                "Type to find an existing spouse"
+        );
 
         sexComboBox.getItems().setAll(Sex.values());
         sexComboBox.setValue(Sex.UNKNOWN);
@@ -67,6 +79,8 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         sealingDateField.setPromptText("Optional text");
         sealingNotesArea.setWrapText(true);
         sealingNotesArea.setPrefRowCount(4);
+        sexComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleSexShortcut);
+        sealingStatusComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleSealingStatusShortcut);
 
         if (existingLink != null) {
             Long otherPersonId = existingLink.getOtherPersonId(selectedPerson.getPersonId());
@@ -92,6 +106,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
 
         updateMode();
         createNewPersonCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateMode());
+        focusPrimaryInput();
 
         Node okButton = getDialogPane().lookupButton(ButtonType.OK);
         okButton.addEventFilter(ActionEvent.ACTION, event -> {
@@ -107,6 +122,8 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
                 }
             }
         });
+
+        configureSubmitShortcut();
 
         setResultConverter(buttonType -> {
             if (buttonType != ButtonType.OK) {
@@ -198,6 +215,66 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         surnameField.setPrefWidth(320);
 
         return grid;
+    }
+
+    private void configureSubmitShortcut() {
+        getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (!SUBMIT_SHORTCUT.match(event)) {
+                return;
+            }
+
+            Node okButton = getDialogPane().lookupButton(ButtonType.OK);
+            if (okButton instanceof ButtonBase button && !button.isDisabled()) {
+                button.fire();
+                event.consume();
+            }
+        });
+    }
+
+    private void focusPrimaryInput() {
+        Platform.runLater(() -> {
+            if (createNewPersonCheckBox.isSelected()) {
+                preferredNameField.requestFocus();
+                preferredNameField.selectAll();
+                return;
+            }
+
+            spouseComboBox.requestFocus();
+            if (spouseComboBox.isEditable()) {
+                spouseComboBox.getEditor().requestFocus();
+                spouseComboBox.getEditor().selectAll();
+            }
+        });
+    }
+
+    private void handleSexShortcut(KeyEvent event) {
+        if (event.getCode() == KeyCode.M) {
+            sexComboBox.setValue(Sex.MALE);
+            event.consume();
+        } else if (event.getCode() == KeyCode.F) {
+            sexComboBox.setValue(Sex.FEMALE);
+            event.consume();
+        }
+    }
+
+    private void handleSealingStatusShortcut(KeyEvent event) {
+        OrdinanceStatus status = switch (event.getCode()) {
+            case C -> OrdinanceStatus.COMPLETE;
+            case O -> OrdinanceStatus.OPEN;
+            case U -> OrdinanceStatus.UNKNOWN;
+            case N -> OrdinanceStatus.NOT_APPLICABLE;
+            case B -> OrdinanceStatus.BLOCKED_110;
+            case DIGIT1, NUMPAD1 -> OrdinanceStatus.SOON_1Y;
+            case DIGIT2, NUMPAD2 -> OrdinanceStatus.SOON_2Y;
+            case DIGIT5, NUMPAD5 -> OrdinanceStatus.SOON_5Y;
+            case DIGIT0, NUMPAD0 -> OrdinanceStatus.SOON_10Y;
+            default -> null;
+        };
+
+        if (status != null) {
+            sealingStatusComboBox.setValue(status);
+            event.consume();
+        }
     }
 
     private void updateMode() {

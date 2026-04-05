@@ -1,15 +1,19 @@
 package family.balling.descendencytracker.app;
 
 import family.balling.descendencytracker.application.BackupService;
+import family.balling.descendencytracker.application.AncestorLineSummaryService;
+import family.balling.descendencytracker.application.LineStewardshipService;
 import family.balling.descendencytracker.application.OrdinanceEligibilityService;
 import family.balling.descendencytracker.application.OrdinanceService;
 import family.balling.descendencytracker.application.PersonService;
 import family.balling.descendencytracker.application.RelationshipService;
 import family.balling.descendencytracker.application.WorkQueueService;
 import family.balling.descendencytracker.persistence.DatabaseManager;
+import family.balling.descendencytracker.persistence.SqliteLineStewardshipRepository;
 import family.balling.descendencytracker.persistence.SqliteOrdinanceRepository;
 import family.balling.descendencytracker.persistence.SqlitePersonRepository;
 import family.balling.descendencytracker.persistence.SqliteRelationshipRepository;
+import family.balling.descendencytracker.repository.LineStewardshipRepository;
 import family.balling.descendencytracker.repository.OrdinanceRepository;
 import family.balling.descendencytracker.repository.PersonRepository;
 import family.balling.descendencytracker.repository.RelationshipRepository;
@@ -30,11 +34,18 @@ public class DescendencyTrackerApp extends Application {
             PersonRepository personRepository = new SqlitePersonRepository(databaseManager);
             RelationshipRepository relationshipRepository = new SqliteRelationshipRepository(databaseManager);
             OrdinanceRepository ordinanceRepository = new SqliteOrdinanceRepository(databaseManager);
+            LineStewardshipRepository lineStewardshipRepository = new SqliteLineStewardshipRepository(databaseManager);
 
             PersonService personService = new PersonService(personRepository);
             RelationshipService relationshipService = new RelationshipService(personRepository, relationshipRepository);
             OrdinanceService ordinanceService = new OrdinanceService(ordinanceRepository);
+            LineStewardshipService lineStewardshipService = new LineStewardshipService(lineStewardshipRepository);
             OrdinanceEligibilityService ordinanceEligibilityService = new OrdinanceEligibilityService();
+            AncestorLineSummaryService ancestorLineSummaryService = new AncestorLineSummaryService(
+                    relationshipService,
+                    ordinanceService,
+                    ordinanceEligibilityService
+            );
             BackupService backupService = new BackupService(databaseManager);
             WorkQueueService workQueueService = new WorkQueueService(
                     relationshipService,
@@ -46,6 +57,8 @@ public class DescendencyTrackerApp extends Application {
                     personService,
                     relationshipService,
                     ordinanceService,
+                    ancestorLineSummaryService,
+                    lineStewardshipService,
                     ordinanceEligibilityService,
                     backupService,
                     workQueueService

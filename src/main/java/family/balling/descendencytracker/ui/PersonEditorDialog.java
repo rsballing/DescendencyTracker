@@ -1,27 +1,73 @@
 package family.balling.descendencytracker.ui;
 
 import family.balling.descendencytracker.domain.Person;
+import family.balling.descendencytracker.domain.PersonOrdinanceStatus;
 import family.balling.descendencytracker.domain.enums.DatePrecision;
+import family.balling.descendencytracker.domain.enums.OrdinanceStatus;
 import family.balling.descendencytracker.domain.enums.ReviewedStatus;
 import family.balling.descendencytracker.domain.enums.Sex;
+import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.GridPane;
 
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
+import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class PersonEditorDialog extends Dialog<Person> {
+public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
     private static final Pattern YEAR_PATTERN = Pattern.compile("\\b(\\d{4})\\b");
+    private static final Pattern YEAR_ONLY_PATTERN = Pattern.compile("^\\d{4}$");
+    private static final KeyCombination SUBMIT_SHORTCUT = new KeyCodeCombination(KeyCode.ENTER, KeyCombination.CONTROL_DOWN);
+    private static final DateTimeFormatter STANDARD_DATE_FORMAT =
+            new DateTimeFormatterBuilder()
+                    .parseCaseInsensitive()
+                    .appendPattern("d MMM uuuu")
+                    .toFormatter(Locale.ENGLISH);
+    private static final DateTimeFormatter STANDARD_MONTH_YEAR_FORMAT =
+            new DateTimeFormatterBuilder()
+                    .parseCaseInsensitive()
+                    .appendPattern("MMM uuuu")
+                    .toFormatter(Locale.ENGLISH);
+    private static final List<DateTimeFormatter> FULL_DATE_INPUT_FORMATS = List.of(
+            formatter("M/d/uuuu"),
+            formatter("M-d-uuuu"),
+            formatter("uuuu-M-d"),
+            formatter("d MMM uuuu"),
+            formatter("d MMMM uuuu"),
+            formatter("MMM d uuuu"),
+            formatter("MMMM d uuuu"),
+            formatter("MMM d, uuuu"),
+            formatter("MMMM d, uuuu")
+    );
+    private static final List<DateTimeFormatter> MONTH_YEAR_INPUT_FORMATS = List.of(
+            formatter("M/uuuu"),
+            formatter("M-uuuu"),
+            formatter("MMM uuuu"),
+            formatter("MMMM uuuu"),
+            formatter("uuuu-MM")
+    );
 
     private final Person existingPerson;
 
@@ -41,9 +87,17 @@ public class PersonEditorDialog extends Dialog<Person> {
 
     private final ComboBox<ReviewedStatus> reviewedStatusComboBox = new ComboBox<>();
     private final TextArea notesArea = new TextArea();
+    private final ComboBox<OrdinanceStatus> baptismStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatus> confirmationStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatus> initiatoryStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatus> endowmentStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatus> sealedToParentsStatusComboBox = new ComboBox<>();
+    private final TextArea ordinanceNotesArea = new TextArea();
+    private final PersonOrdinanceStatus existingOrdinanceStatus;
 
-    public PersonEditorDialog(Person existingPerson) {
+    public PersonEditorDialog(Person existingPerson, PersonOrdinanceStatus existingOrdinanceStatus) {
         this.existingPerson = existingPerson;
+        this.existingOrdinanceStatus = existingOrdinanceStatus;
 
         setTitle(existingPerson == null ? "Add Person" : "Edit Person");
         setHeaderText(existingPerson == null ? "Create a new person." : "Edit the selected person.");
@@ -53,6 +107,8 @@ public class PersonEditorDialog extends Dialog<Person> {
 
         configureControls();
         populateFields();
+        configureSubmitShortcut();
+        focusPrimaryInput();
 
         Node okButton = getDialogPane().lookupButton(ButtonType.OK);
         okButton.addEventFilter(ActionEvent.ACTION, event -> {
@@ -76,7 +132,7 @@ public class PersonEditorDialog extends Dialog<Person> {
             result.setSurname(clean(surnameField.getText()));
             result.setSex(sexComboBox.getValue() == null ? Sex.UNKNOWN : sexComboBox.getValue());
             result.setLiving(livingCheckBox.isSelected());
-            result.setBirthDateText(clean(birthDateField.getText()));
+            result.setBirthDateText(normalizeBirthDateText(birthDateField.getText()));
             result.setBirthDatePrecision(
                     birthPrecisionComboBox.getValue() == null ? DatePrecision.UNKNOWN : birthPrecisionComboBox.getValue()
             );
@@ -89,7 +145,17 @@ public class PersonEditorDialog extends Dialog<Person> {
             );
             result.setNotes(clean(notesArea.getText()));
 
-            return result;
+            PersonOrdinanceStatus ordinanceStatus = existingOrdinanceStatus == null
+                    ? new PersonOrdinanceStatus()
+                    : existingOrdinanceStatus;
+            ordinanceStatus.setBaptismStatus(selectedOrdinanceStatus(baptismStatusComboBox));
+            ordinanceStatus.setConfirmationStatus(selectedOrdinanceStatus(confirmationStatusComboBox));
+            ordinanceStatus.setInitiatoryStatus(selectedOrdinanceStatus(initiatoryStatusComboBox));
+            ordinanceStatus.setEndowmentStatus(selectedOrdinanceStatus(endowmentStatusComboBox));
+            ordinanceStatus.setSealedToParentsStatus(selectedOrdinanceStatus(sealedToParentsStatusComboBox));
+            ordinanceStatus.setOrdinanceNotes(clean(ordinanceNotesArea.getText()));
+
+            return new Result(result, ordinanceStatus);
         });
     }
 
@@ -134,6 +200,24 @@ public class PersonEditorDialog extends Dialog<Person> {
         grid.add(new Label("Reviewed Status"), 0, row);
         grid.add(reviewedStatusComboBox, 1, row++);
 
+        grid.add(new Label("Baptism"), 0, row);
+        grid.add(baptismStatusComboBox, 1, row++);
+
+        grid.add(new Label("Confirmation"), 0, row);
+        grid.add(confirmationStatusComboBox, 1, row++);
+
+        grid.add(new Label("Initiatory"), 0, row);
+        grid.add(initiatoryStatusComboBox, 1, row++);
+
+        grid.add(new Label("Endowment"), 0, row);
+        grid.add(endowmentStatusComboBox, 1, row++);
+
+        grid.add(new Label("Sealed to Parents"), 0, row);
+        grid.add(sealedToParentsStatusComboBox, 1, row++);
+
+        grid.add(new Label("Ordinance Notes"), 0, row);
+        grid.add(ordinanceNotesArea, 1, row++);
+
         grid.add(new Label("Notes"), 0, row);
         grid.add(notesArea, 1, row);
 
@@ -155,6 +239,11 @@ public class PersonEditorDialog extends Dialog<Person> {
         birthPrecisionComboBox.getItems().setAll(DatePrecision.values());
         deathPrecisionComboBox.getItems().setAll(DatePrecision.values());
         reviewedStatusComboBox.getItems().setAll(ReviewedStatus.values());
+        baptismStatusComboBox.getItems().setAll(OrdinanceStatus.values());
+        confirmationStatusComboBox.getItems().setAll(OrdinanceStatus.values());
+        initiatoryStatusComboBox.getItems().setAll(OrdinanceStatus.values());
+        endowmentStatusComboBox.getItems().setAll(OrdinanceStatus.values());
+        sealedToParentsStatusComboBox.getItems().setAll(OrdinanceStatus.values());
 
         preferredNameField.setPromptText("Required");
         fsPidField.setPromptText("Optional, e.g. KWZ3-ABC");
@@ -165,8 +254,46 @@ public class PersonEditorDialog extends Dialog<Person> {
         birthPrecisionComboBox.setValue(DatePrecision.UNKNOWN);
         deathPrecisionComboBox.setValue(DatePrecision.UNKNOWN);
         reviewedStatusComboBox.setValue(ReviewedStatus.NOT_REVIEWED);
+        baptismStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
+        confirmationStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
+        initiatoryStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
+        endowmentStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
+        sealedToParentsStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
 
         livingCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateLivingState());
+        sexComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleSexShortcut);
+        birthPrecisionComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleBirthPrecisionShortcut);
+        deathPrecisionComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleDeathPrecisionShortcut);
+        reviewedStatusComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleReviewedStatusShortcut);
+        configureOrdinanceShortcut(baptismStatusComboBox);
+        configureOrdinanceShortcut(confirmationStatusComboBox);
+        configureOrdinanceShortcut(initiatoryStatusComboBox);
+        configureOrdinanceShortcut(endowmentStatusComboBox);
+        configureOrdinanceShortcut(sealedToParentsStatusComboBox);
+
+        ordinanceNotesArea.setWrapText(true);
+        ordinanceNotesArea.setPrefRowCount(4);
+    }
+
+    private void configureSubmitShortcut() {
+        getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (!SUBMIT_SHORTCUT.match(event)) {
+                return;
+            }
+
+            Node okButton = getDialogPane().lookupButton(ButtonType.OK);
+            if (okButton instanceof ButtonBase button && !button.isDisabled()) {
+                button.fire();
+                event.consume();
+            }
+        });
+    }
+
+    private void focusPrimaryInput() {
+        Platform.runLater(() -> {
+            preferredNameField.requestFocus();
+            preferredNameField.selectAll();
+        });
     }
 
     private void populateFields() {
@@ -198,6 +325,14 @@ public class PersonEditorDialog extends Dialog<Person> {
         );
 
         notesArea.setText(nullSafe(existingPerson.getNotes()));
+        if (existingOrdinanceStatus != null) {
+            baptismStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getBaptismStatus()));
+            confirmationStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getConfirmationStatus()));
+            initiatoryStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getInitiatoryStatus()));
+            endowmentStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getEndowmentStatus()));
+            sealedToParentsStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getSealedToParentsStatus()));
+            ordinanceNotesArea.setText(nullSafe(existingOrdinanceStatus.getOrdinanceNotes()));
+        }
 
         updateLivingState();
     }
@@ -212,6 +347,123 @@ public class PersonEditorDialog extends Dialog<Person> {
             deathDateField.clear();
             deathPrecisionComboBox.setValue(DatePrecision.UNKNOWN);
         }
+    }
+
+    private void handleSexShortcut(KeyEvent event) {
+        if (event.getCode() == KeyCode.M) {
+            sexComboBox.setValue(Sex.MALE);
+            event.consume();
+        } else if (event.getCode() == KeyCode.F) {
+            sexComboBox.setValue(Sex.FEMALE);
+            event.consume();
+        }
+    }
+
+    private void handleBirthPrecisionShortcut(KeyEvent event) {
+        if (event.getCode() == KeyCode.E) {
+            birthPrecisionComboBox.setValue(DatePrecision.EXACT);
+            event.consume();
+        } else if (event.getCode() == KeyCode.M) {
+            birthPrecisionComboBox.setValue(DatePrecision.MONTH_YEAR);
+            event.consume();
+        } else if (event.getCode() == KeyCode.Y) {
+            birthPrecisionComboBox.setValue(DatePrecision.YEAR_ONLY);
+            event.consume();
+        } else if (event.getCode() == KeyCode.U) {
+            birthPrecisionComboBox.setValue(DatePrecision.UNKNOWN);
+            event.consume();
+        }
+    }
+
+    private void handleDeathPrecisionShortcut(KeyEvent event) {
+        if (event.getCode() == KeyCode.E) {
+            deathPrecisionComboBox.setValue(DatePrecision.EXACT);
+            event.consume();
+        } else if (event.getCode() == KeyCode.M) {
+            deathPrecisionComboBox.setValue(DatePrecision.MONTH_YEAR);
+            event.consume();
+        } else if (event.getCode() == KeyCode.Y) {
+            deathPrecisionComboBox.setValue(DatePrecision.YEAR_ONLY);
+            event.consume();
+        } else if (event.getCode() == KeyCode.U) {
+            deathPrecisionComboBox.setValue(DatePrecision.UNKNOWN);
+            event.consume();
+        }
+    }
+
+    private void handleReviewedStatusShortcut(KeyEvent event) {
+        if (event.getCode() == KeyCode.N) {
+            reviewedStatusComboBox.setValue(ReviewedStatus.NOT_REVIEWED);
+            event.consume();
+        } else if (event.getCode() == KeyCode.I) {
+            reviewedStatusComboBox.setValue(ReviewedStatus.IN_PROGRESS);
+            event.consume();
+        } else if (event.getCode() == KeyCode.R) {
+            reviewedStatusComboBox.setValue(ReviewedStatus.REVIEWED);
+            event.consume();
+        }
+    }
+
+    private void configureOrdinanceShortcut(ComboBox<OrdinanceStatus> comboBox) {
+        comboBox.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            OrdinanceStatus status = mapOrdinanceShortcut(event.getCode());
+            if (status != null) {
+                comboBox.setValue(status);
+                event.consume();
+            }
+        });
+    }
+
+    private OrdinanceStatus mapOrdinanceShortcut(KeyCode keyCode) {
+        return switch (keyCode) {
+            case C -> OrdinanceStatus.COMPLETE;
+            case O -> OrdinanceStatus.OPEN;
+            case U -> OrdinanceStatus.UNKNOWN;
+            case N -> OrdinanceStatus.NOT_APPLICABLE;
+            case B -> OrdinanceStatus.BLOCKED_110;
+            case DIGIT1, NUMPAD1 -> OrdinanceStatus.SOON_1Y;
+            case DIGIT2, NUMPAD2 -> OrdinanceStatus.SOON_2Y;
+            case DIGIT5, NUMPAD5 -> OrdinanceStatus.SOON_5Y;
+            case DIGIT0, NUMPAD0 -> OrdinanceStatus.SOON_10Y;
+            default -> null;
+        };
+    }
+
+    private String normalizeBirthDateText(String value) {
+        String cleaned = clean(value);
+        if (cleaned == null) {
+            return null;
+        }
+
+        if (YEAR_ONLY_PATTERN.matcher(cleaned).matches()) {
+            return cleaned;
+        }
+
+        for (DateTimeFormatter formatter : FULL_DATE_INPUT_FORMATS) {
+            try {
+                return STANDARD_DATE_FORMAT.format(LocalDate.parse(cleaned, formatter));
+            } catch (DateTimeParseException ignored) {
+                // Try the next supported input format.
+            }
+        }
+
+        for (DateTimeFormatter formatter : MONTH_YEAR_INPUT_FORMATS) {
+            try {
+                return STANDARD_MONTH_YEAR_FORMAT.format(YearMonth.parse(cleaned, formatter));
+            } catch (DateTimeParseException ignored) {
+                // Leave unparseable values unchanged so free-text dates still work.
+            }
+        }
+
+        return cleaned;
+    }
+
+    private static DateTimeFormatter formatter(String pattern) {
+        return new DateTimeFormatterBuilder()
+                .parseCaseInsensitive()
+                .appendPattern(pattern)
+                .toFormatter(Locale.ENGLISH)
+                .withResolverStyle(ResolverStyle.STRICT);
     }
 
     private String validateInputs() {
@@ -260,11 +512,37 @@ public class PersonEditorDialog extends Dialog<Person> {
         return value == null ? "" : value;
     }
 
+    private OrdinanceStatus selectedOrdinanceStatus(ComboBox<OrdinanceStatus> comboBox) {
+        return comboBox.getValue() == null ? OrdinanceStatus.UNKNOWN : comboBox.getValue();
+    }
+
+    private OrdinanceStatus safeStatus(OrdinanceStatus status) {
+        return status == null ? OrdinanceStatus.UNKNOWN : status;
+    }
+
     private void showWarning(String message) {
         Alert alert = new Alert(Alert.AlertType.WARNING);
         alert.setTitle("Validation");
         alert.setHeaderText(null);
         alert.setContentText(message);
         alert.showAndWait();
+    }
+
+    public static class Result {
+        private final Person person;
+        private final PersonOrdinanceStatus ordinanceStatus;
+
+        public Result(Person person, PersonOrdinanceStatus ordinanceStatus) {
+            this.person = person;
+            this.ordinanceStatus = ordinanceStatus;
+        }
+
+        public Person getPerson() {
+            return person;
+        }
+
+        public PersonOrdinanceStatus getOrdinanceStatus() {
+            return ordinanceStatus;
+        }
     }
 }

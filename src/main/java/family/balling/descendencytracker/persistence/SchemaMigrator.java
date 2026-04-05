@@ -30,11 +30,17 @@ public final class SchemaMigrator {
                     is_root INTEGER NOT NULL DEFAULT 0,
                     is_deleted INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+                    last_synced_at TEXT
                 )
                 """);
 
             ensureColumnExists(connection, "person", "fs_pid", "ALTER TABLE person ADD COLUMN fs_pid TEXT");
+            ensureColumnExists(connection, "person", "version", "ALTER TABLE person ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+            ensureColumnExists(connection, "person", "sync_status", "ALTER TABLE person ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY'");
+            ensureColumnExists(connection, "person", "last_synced_at", "ALTER TABLE person ADD COLUMN last_synced_at TEXT");
 
             statement.executeUpdate("""
                 CREATE INDEX IF NOT EXISTS idx_person_active_name
@@ -58,11 +64,17 @@ public final class SchemaMigrator {
                     is_deleted INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+                    last_synced_at TEXT,
                     FOREIGN KEY(parent_person_id) REFERENCES person(person_id),
                     FOREIGN KEY(child_person_id) REFERENCES person(person_id),
                     UNIQUE(parent_person_id, child_person_id)
                 )
                 """);
+            ensureColumnExists(connection, "parent_child_link", "version", "ALTER TABLE parent_child_link ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+            ensureColumnExists(connection, "parent_child_link", "sync_status", "ALTER TABLE parent_child_link ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY'");
+            ensureColumnExists(connection, "parent_child_link", "last_synced_at", "ALTER TABLE parent_child_link ADD COLUMN last_synced_at TEXT");
 
             statement.executeUpdate("""
                 CREATE INDEX IF NOT EXISTS idx_parent_child_parent
@@ -88,6 +100,9 @@ public final class SchemaMigrator {
                     is_deleted INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+                    last_synced_at TEXT,
                     FOREIGN KEY(person_a_id) REFERENCES person(person_id),
                     FOREIGN KEY(person_b_id) REFERENCES person(person_id),
                     UNIQUE(person_a_id, person_b_id)
@@ -112,6 +127,9 @@ public final class SchemaMigrator {
                     "sealing_notes",
                     "ALTER TABLE spouse_link ADD COLUMN sealing_notes TEXT"
             );
+            ensureColumnExists(connection, "spouse_link", "version", "ALTER TABLE spouse_link ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+            ensureColumnExists(connection, "spouse_link", "sync_status", "ALTER TABLE spouse_link ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY'");
+            ensureColumnExists(connection, "spouse_link", "last_synced_at", "ALTER TABLE spouse_link ADD COLUMN last_synced_at TEXT");
 
             statement.executeUpdate("""
                 CREATE INDEX IF NOT EXISTS idx_spouse_link_person_a
@@ -133,9 +151,31 @@ public final class SchemaMigrator {
                     sealed_to_parents_status TEXT NOT NULL DEFAULT 'UNKNOWN',
                     ordinance_notes TEXT,
                     updated_at TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+                    last_synced_at TEXT,
                     FOREIGN KEY(person_id) REFERENCES person(person_id)
                 )
                 """);
+            ensureColumnExists(connection, "person_ordinance_status", "version", "ALTER TABLE person_ordinance_status ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+            ensureColumnExists(connection, "person_ordinance_status", "sync_status", "ALTER TABLE person_ordinance_status ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY'");
+            ensureColumnExists(connection, "person_ordinance_status", "last_synced_at", "ALTER TABLE person_ordinance_status ADD COLUMN last_synced_at TEXT");
+
+            statement.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS line_stewardship (
+                    ancestor_person_id INTEGER PRIMARY KEY,
+                    stewardship_status TEXT NOT NULL DEFAULT 'UNASSIGNED',
+                    notes TEXT,
+                    updated_at TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+                    last_synced_at TEXT,
+                    FOREIGN KEY(ancestor_person_id) REFERENCES person(person_id)
+                )
+                """);
+            ensureColumnExists(connection, "line_stewardship", "version", "ALTER TABLE line_stewardship ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+            ensureColumnExists(connection, "line_stewardship", "sync_status", "ALTER TABLE line_stewardship ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY'");
+            ensureColumnExists(connection, "line_stewardship", "last_synced_at", "ALTER TABLE line_stewardship ADD COLUMN last_synced_at TEXT");
         }
     }
 

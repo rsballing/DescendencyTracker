@@ -4,6 +4,7 @@ import family.balling.descendencytracker.domain.Person;
 import family.balling.descendencytracker.domain.enums.DatePrecision;
 import family.balling.descendencytracker.domain.enums.ReviewedStatus;
 import family.balling.descendencytracker.domain.enums.Sex;
+import family.balling.descendencytracker.domain.enums.SyncStatus;
 import family.balling.descendencytracker.repository.PersonRepository;
 
 import java.sql.Connection;
@@ -44,7 +45,10 @@ public class SqlitePersonRepository implements PersonRepository {
                    is_root,
                    is_deleted,
                    created_at,
-                   updated_at
+                   updated_at,
+                   version,
+                   sync_status,
+                   last_synced_at
             FROM person
             WHERE is_deleted = 0
             ORDER BY is_root DESC,
@@ -87,7 +91,10 @@ public class SqlitePersonRepository implements PersonRepository {
                    is_root,
                    is_deleted,
                    created_at,
-                   updated_at
+                   updated_at,
+                   version,
+                   sync_status,
+                   last_synced_at
             FROM person
             WHERE person_id = ?
             """;
@@ -128,7 +135,10 @@ public class SqlitePersonRepository implements PersonRepository {
                    is_root,
                    is_deleted,
                    created_at,
-                   updated_at
+                   updated_at,
+                   version,
+                   sync_status,
+                   last_synced_at
             FROM person
             WHERE is_deleted = 0
               AND is_root = 1
@@ -161,6 +171,9 @@ public class SqlitePersonRepository implements PersonRepository {
         String sql = """
             UPDATE person
             SET is_deleted = 1,
+                version = version + 1,
+                sync_status = 'LOCAL_ONLY',
+                last_synced_at = NULL,
                 is_root = 0,
                 updated_at = ?
             WHERE person_id = ?
@@ -185,12 +198,18 @@ public class SqlitePersonRepository implements PersonRepository {
             try (PreparedStatement clearStatement = connection.prepareStatement("""
                     UPDATE person
                     SET is_root = 0,
+                        version = version + 1,
+                        sync_status = 'LOCAL_ONLY',
+                        last_synced_at = NULL,
                         updated_at = ?
                     WHERE is_deleted = 0
                     """);
                  PreparedStatement setStatement = connection.prepareStatement("""
                     UPDATE person
                     SET is_root = 1,
+                        version = version + 1,
+                        sync_status = 'LOCAL_ONLY',
+                        last_synced_at = NULL,
                         updated_at = ?
                     WHERE person_id = ?
                       AND is_deleted = 0
@@ -240,8 +259,11 @@ public class SqlitePersonRepository implements PersonRepository {
                 is_root,
                 is_deleted,
                 created_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                updated_at,
+                version,
+                sync_status,
+                last_synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
         String now = Instant.now().toString();
@@ -271,6 +293,9 @@ public class SqlitePersonRepository implements PersonRepository {
             statement.setInt(15, person.isDeleted() ? 1 : 0);
             statement.setString(16, now);
             statement.setString(17, now);
+            statement.setInt(18, Math.max(1, person.getVersion()));
+            statement.setString(19, safeSyncStatus(person.getSyncStatus()).name());
+            statement.setString(20, person.getLastSyncedAt());
 
             statement.executeUpdate();
 
@@ -304,6 +329,9 @@ public class SqlitePersonRepository implements PersonRepository {
                 notes = ?,
                 is_root = ?,
                 is_deleted = ?,
+                version = version + 1,
+                sync_status = 'LOCAL_ONLY',
+                last_synced_at = NULL,
                 updated_at = ?
             WHERE person_id = ?
             """;
@@ -367,6 +395,20 @@ public class SqlitePersonRepository implements PersonRepository {
         person.setDeleted(rs.getInt("is_deleted") == 1);
         person.setCreatedAt(rs.getString("created_at"));
         person.setUpdatedAt(rs.getString("updated_at"));
+        person.setVersion(rs.getInt("version"));
+        person.setSyncStatus(readSyncStatus(rs.getString("sync_status")));
+        person.setLastSyncedAt(rs.getString("last_synced_at"));
         return person;
+    }
+
+    private SyncStatus safeSyncStatus(SyncStatus syncStatus) {
+        return syncStatus == null ? SyncStatus.LOCAL_ONLY : syncStatus;
+    }
+
+    private SyncStatus readSyncStatus(String value) {
+        if (value == null || value.isBlank()) {
+            return SyncStatus.LOCAL_ONLY;
+        }
+        return SyncStatus.valueOf(value);
     }
 }

@@ -14,10 +14,17 @@ public class DatabaseManager {
     private final String jdbcUrl;
 
     public DatabaseManager() {
+        this(resolveDefaultDatabasePath());
+    }
+
+    public DatabaseManager(Path databasePath) {
         try {
-            Path appDirectory = Paths.get(System.getProperty("user.home"), ".descendency-tracker");
-            Files.createDirectories(appDirectory);
-            this.databasePath = appDirectory.resolve("descendency-tracker.db");
+            Path resolvedPath = databasePath.toAbsolutePath();
+            Path parentDirectory = resolvedPath.getParent();
+            if (parentDirectory != null) {
+                Files.createDirectories(parentDirectory);
+            }
+            this.databasePath = resolvedPath;
             this.jdbcUrl = "jdbc:sqlite:" + databasePath;
         } catch (IOException ex) {
             throw new RuntimeException("Could not create the application data directory.", ex);
@@ -42,5 +49,9 @@ public class DatabaseManager {
 
     public Path getDatabasePath() {
         return databasePath;
+    }
+
+    private static Path resolveDefaultDatabasePath() {
+        return Paths.get(System.getProperty("user.home"), ".descendency-tracker", "descendency-tracker.db");
     }
 }

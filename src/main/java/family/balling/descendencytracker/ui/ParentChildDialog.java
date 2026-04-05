@@ -3,25 +3,38 @@ package family.balling.descendencytracker.ui;
 import family.balling.descendencytracker.domain.ParentChildLink;
 import family.balling.descendencytracker.domain.Person;
 import family.balling.descendencytracker.domain.enums.Sex;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.GridPane;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
+    private static final KeyCombination SUBMIT_SHORTCUT = new KeyCodeCombination(KeyCode.ENTER, KeyCombination.CONTROL_DOWN);
+
     private final ComboBox<Person> relatedPersonComboBox = new ComboBox<>();
     private final CheckBox createNewPersonCheckBox = new CheckBox("Create a new person instead");
+    private final CheckBox mirrorToSpouseCheckBox = new CheckBox("Also add this child to a spouse of the parent");
+    private final ComboBox<Person> mirrorSpouseComboBox = new ComboBox<>();
 
     private final TextField preferredNameField = new TextField();
     private final TextField fsPidField = new TextField();
@@ -32,12 +45,27 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
 
     private final TextField childOrderField = new TextField();
     private final TextArea notesArea = new TextArea();
+    private final boolean allowSpouseMirror;
+    private final Map<Long, List<Person>> spouseCandidatesByParentId;
 
     public ParentChildDialog(boolean addingParent, Person selectedPerson, List<Person> candidates) {
-        this(addingParent, selectedPerson, candidates, null);
+        this(addingParent, selectedPerson, candidates, Collections.emptyMap(), null);
     }
 
     public ParentChildDialog(boolean addingParent, Person selectedPerson, List<Person> candidates, ParentChildLink existingLink) {
+        this(addingParent, selectedPerson, candidates, Collections.emptyMap(), existingLink);
+    }
+
+    public ParentChildDialog(
+            boolean addingParent,
+            Person selectedPerson,
+            List<Person> candidates,
+            Map<Long, List<Person>> spouseCandidatesByParentId,
+            ParentChildLink existingLink
+    ) {
+        this.allowSpouseMirror = addingParent;
+        this.spouseCandidatesByParentId = spouseCandidatesByParentId == null ? Collections.emptyMap() : spouseCandidatesByParentId;
+
         setTitle(existingLink == null
                 ? (addingParent ? "Add Parent" : "Add Child")
                 : (addingParent ? "Edit Parent Link" : "Edit Child Link"));
@@ -53,8 +81,18 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         getDialogPane().setContent(buildForm(addingParent));
 
-        relatedPersonComboBox.setItems(FXCollections.observableArrayList(candidates));
         relatedPersonComboBox.setPrefWidth(320);
+        mirrorSpouseComboBox.setPrefWidth(320);
+        mirrorSpouseComboBox.setEditable(false);
+        mirrorSpouseComboBox.setPromptText("Select a spouse to mirror");
+        mirrorSpouseComboBox.setButtonCell(createPersonCell());
+        mirrorSpouseComboBox.setCellFactory(ignored -> createPersonCell());
+        PersonSelectionSupport.configurePersonAutocomplete(
+                relatedPersonComboBox,
+                candidates,
+                addingParent ? "Type to find an existing parent" : "Type to find an existing child"
+        );
+        mirrorSpouseComboBox.setItems(FXCollections.observableArrayList());
 
         sexComboBox.getItems().setAll(Sex.values());
         sexComboBox.setValue(Sex.UNKNOWN);
@@ -63,6 +101,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         notesArea.setPrefRowCount(5);
         childOrderField.setPromptText("Optional integer");
         fsPidField.setPromptText("Optional, e.g. KWZ3-ABC");
+        sexComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleSexShortcut);
 
         if (existingLink != null) {
             Long relatedPersonId = addingParent ? existingLink.getParentPersonId() : existingLink.getChildPersonId();
@@ -84,6 +123,15 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
 
         updateMode();
         createNewPersonCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateMode());
+        relatedPersonComboBox.valueProperty().addListener((obs, oldValue, newValue) -> updateMirrorSpouseChoices());
+        mirrorToSpouseCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateMirrorSpouseControls());
+        mirrorSpouseComboBox.valueProperty().addListener((obs, oldValue, newValue) -> {
+            if (allowSpouseMirror && newValue != null && !mirrorToSpouseCheckBox.isSelected() && !mirrorToSpouseCheckBox.isDisabled()) {
+                mirrorToSpouseCheckBox.setSelected(true);
+            }
+        });
+        updateMirrorSpouseChoices();
+        focusPrimaryInput();
 
         Node okButton = getDialogPane().lookupButton(ButtonType.OK);
         okButton.addEventFilter(ActionEvent.ACTION, event -> {
@@ -101,6 +149,12 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
                 }
             }
 
+            if (allowSpouseMirror && mirrorToSpouseCheckBox.isSelected() && mirrorSpouseComboBox.getValue() == null) {
+                event.consume();
+                showWarning("Please select a spouse to mirror this parent relationship.");
+                return;
+            }
+
             String orderText = childOrderField.getText();
             if (orderText != null && !orderText.isBlank()) {
                 try {
@@ -111,6 +165,8 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
                 }
             }
         });
+
+        configureSubmitShortcut();
 
         setResultConverter(buttonType -> {
             if (buttonType != ButtonType.OK) {
@@ -136,7 +192,8 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
                         null,
                         newPerson,
                         childOrder,
-                        clean(notesArea.getText())
+                        clean(notesArea.getText()),
+                        null
                 );
             }
 
@@ -144,7 +201,10 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
                     relatedPersonComboBox.getValue().getPersonId(),
                     null,
                     childOrder,
-                    clean(notesArea.getText())
+                    clean(notesArea.getText()),
+                    allowSpouseMirror && mirrorToSpouseCheckBox.isSelected() && mirrorSpouseComboBox.getValue() != null
+                            ? mirrorSpouseComboBox.getValue().getPersonId()
+                            : null
             );
         });
     }
@@ -162,6 +222,14 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
 
         grid.add(new Label("Mode"), 0, row);
         grid.add(createNewPersonCheckBox, 1, row++);
+
+        if (allowSpouseMirror) {
+            grid.add(new Label("Mirror to Spouse"), 0, row);
+            grid.add(mirrorToSpouseCheckBox, 1, row++);
+
+            grid.add(new Label("Selected Spouse"), 0, row);
+            grid.add(mirrorSpouseComboBox, 1, row++);
+        }
 
         grid.add(new Label(addingParent ? "New Parent Preferred Name" : "New Child Preferred Name"), 0, row);
         grid.add(preferredNameField, 1, row++);
@@ -195,6 +263,46 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         return grid;
     }
 
+    private void configureSubmitShortcut() {
+        getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (!SUBMIT_SHORTCUT.match(event)) {
+                return;
+            }
+
+            Node okButton = getDialogPane().lookupButton(ButtonType.OK);
+            if (okButton instanceof ButtonBase button && !button.isDisabled()) {
+                button.fire();
+                event.consume();
+            }
+        });
+    }
+
+    private void focusPrimaryInput() {
+        Platform.runLater(() -> {
+            if (createNewPersonCheckBox.isSelected()) {
+                preferredNameField.requestFocus();
+                preferredNameField.selectAll();
+                return;
+            }
+
+            relatedPersonComboBox.requestFocus();
+            if (relatedPersonComboBox.isEditable()) {
+                relatedPersonComboBox.getEditor().requestFocus();
+                relatedPersonComboBox.getEditor().selectAll();
+            }
+        });
+    }
+
+    private void handleSexShortcut(KeyEvent event) {
+        if (event.getCode() == KeyCode.M) {
+            sexComboBox.setValue(Sex.MALE);
+            event.consume();
+        } else if (event.getCode() == KeyCode.F) {
+            sexComboBox.setValue(Sex.FEMALE);
+            event.consume();
+        }
+    }
+
     private void updateMode() {
         boolean creatingNew = createNewPersonCheckBox.isSelected();
 
@@ -206,6 +314,50 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         surnameField.setDisable(!creatingNew);
         sexComboBox.setDisable(!creatingNew);
         livingCheckBox.setDisable(!creatingNew);
+        updateMirrorSpouseControls();
+    }
+
+    private void updateMirrorSpouseChoices() {
+        if (!allowSpouseMirror) {
+            return;
+        }
+
+        Person selectedParent = relatedPersonComboBox.getValue();
+        List<Person> spouseCandidates = selectedParent == null || selectedParent.getPersonId() == null
+                ? List.of()
+                : spouseCandidatesByParentId.getOrDefault(selectedParent.getPersonId(), List.of());
+
+        mirrorSpouseComboBox.setItems(FXCollections.observableArrayList(spouseCandidates));
+        Person selectedSpouse = mirrorSpouseComboBox.getValue();
+        if (selectedSpouse != null && !spouseCandidates.contains(selectedSpouse)) {
+            mirrorSpouseComboBox.setValue(null);
+        }
+        if (mirrorSpouseComboBox.getValue() == null && spouseCandidates.size() == 1) {
+            mirrorSpouseComboBox.setValue(spouseCandidates.get(0));
+        }
+
+        if (spouseCandidates.isEmpty()) {
+            mirrorToSpouseCheckBox.setSelected(false);
+        }
+
+        updateMirrorSpouseControls();
+    }
+
+    private void updateMirrorSpouseControls() {
+        if (!allowSpouseMirror) {
+            return;
+        }
+
+        boolean creatingNew = createNewPersonCheckBox.isSelected();
+        boolean hasSpouses = !mirrorSpouseComboBox.getItems().isEmpty();
+        boolean mirrorEnabled = !creatingNew && hasSpouses;
+
+        mirrorToSpouseCheckBox.setDisable(!mirrorEnabled);
+        if (!mirrorEnabled) {
+            mirrorToSpouseCheckBox.setSelected(false);
+        }
+
+        mirrorSpouseComboBox.setDisable(!mirrorEnabled);
     }
 
     private String clean(String value) {
@@ -224,17 +376,38 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         alert.showAndWait();
     }
 
+    private ListCell<Person> createPersonCell() {
+        return new ListCell<>() {
+            @Override
+            protected void updateItem(Person item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    return;
+                }
+
+                String text = item.getDisplayName();
+                if (item.getFsPid() != null && !item.getFsPid().isBlank()) {
+                    text += " [" + item.getFsPid() + "]";
+                }
+                setText(text);
+            }
+        };
+    }
+
     public static class Result {
         private final Long relatedPersonId;
         private final Person newPerson;
         private final Integer childOrder;
         private final String notes;
+        private final Long mirrorSpousePersonId;
 
-        public Result(Long relatedPersonId, Person newPerson, Integer childOrder, String notes) {
+        public Result(Long relatedPersonId, Person newPerson, Integer childOrder, String notes, Long mirrorSpousePersonId) {
             this.relatedPersonId = relatedPersonId;
             this.newPerson = newPerson;
             this.childOrder = childOrder;
             this.notes = notes;
+            this.mirrorSpousePersonId = mirrorSpousePersonId;
         }
 
         public Long getRelatedPersonId() {
@@ -251,6 +424,10 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
 
         public String getNotes() {
             return notes;
+        }
+
+        public Long getMirrorSpousePersonId() {
+            return mirrorSpousePersonId;
         }
     }
 }
