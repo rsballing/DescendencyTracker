@@ -25,54 +25,18 @@ import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.GridPane;
 
-import java.time.LocalDate;
-import java.time.YearMonth;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
-import java.time.format.DateTimeParseException;
-import java.time.format.ResolverStyle;
 import java.util.List;
-import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
     private static final Pattern YEAR_PATTERN = Pattern.compile("\\b(\\d{4})\\b");
-    private static final Pattern YEAR_ONLY_PATTERN = Pattern.compile("^\\d{4}$");
     private static final KeyCombination SUBMIT_SHORTCUT = new KeyCodeCombination(KeyCode.ENTER, KeyCombination.CONTROL_DOWN);
-    private static final DateTimeFormatter STANDARD_DATE_FORMAT =
-            new DateTimeFormatterBuilder()
-                    .parseCaseInsensitive()
-                    .appendPattern("d MMM uuuu")
-                    .toFormatter(Locale.ENGLISH);
-    private static final DateTimeFormatter STANDARD_MONTH_YEAR_FORMAT =
-            new DateTimeFormatterBuilder()
-                    .parseCaseInsensitive()
-                    .appendPattern("MMM uuuu")
-                    .toFormatter(Locale.ENGLISH);
-    private static final List<DateTimeFormatter> FULL_DATE_INPUT_FORMATS = List.of(
-            formatter("M/d/uuuu"),
-            formatter("M-d-uuuu"),
-            formatter("uuuu-M-d"),
-            formatter("d MMM uuuu"),
-            formatter("d MMMM uuuu"),
-            formatter("MMM d uuuu"),
-            formatter("MMMM d uuuu"),
-            formatter("MMM d, uuuu"),
-            formatter("MMMM d, uuuu")
-    );
-    private static final List<DateTimeFormatter> MONTH_YEAR_INPUT_FORMATS = List.of(
-            formatter("M/uuuu"),
-            formatter("M-uuuu"),
-            formatter("MMM uuuu"),
-            formatter("MMMM uuuu"),
-            formatter("uuuu-MM")
-    );
 
     private final Person existingPerson;
 
     private final TextField preferredNameField = new TextField();
-    private final TextField fsPidField = new TextField();
+    private final FsPidFields fsPidFields = new FsPidFields();
     private final TextField givenNamesField = new TextField();
     private final TextField surnameField = new TextField();
 
@@ -126,24 +90,24 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
 
             Person result = existingPerson == null ? new Person() : existingPerson;
 
-            result.setPreferredName(clean(preferredNameField.getText()));
-            result.setFsPid(clean(fsPidField.getText()));
-            result.setGivenNames(clean(givenNamesField.getText()));
-            result.setSurname(clean(surnameField.getText()));
+            result.setPreferredName(DateTextSupport.clean(preferredNameField.getText()));
+            result.setFsPid(fsPidFields.getValue());
+            result.setGivenNames(DateTextSupport.clean(givenNamesField.getText()));
+            result.setSurname(DateTextSupport.clean(surnameField.getText()));
             result.setSex(sexComboBox.getValue() == null ? Sex.UNKNOWN : sexComboBox.getValue());
             result.setLiving(livingCheckBox.isSelected());
-            result.setBirthDateText(normalizeBirthDateText(birthDateField.getText()));
+            result.setBirthDateText(DateTextSupport.normalizeDateText(birthDateField.getText()));
             result.setBirthDatePrecision(
                     birthPrecisionComboBox.getValue() == null ? DatePrecision.UNKNOWN : birthPrecisionComboBox.getValue()
             );
-            result.setDeathDateText(clean(deathDateField.getText()));
+            result.setDeathDateText(DateTextSupport.normalizeDateText(deathDateField.getText()));
             result.setDeathDatePrecision(
                     deathPrecisionComboBox.getValue() == null ? DatePrecision.UNKNOWN : deathPrecisionComboBox.getValue()
             );
             result.setReviewedStatus(
                     reviewedStatusComboBox.getValue() == null ? ReviewedStatus.NOT_REVIEWED : reviewedStatusComboBox.getValue()
             );
-            result.setNotes(clean(notesArea.getText()));
+            result.setNotes(DateTextSupport.clean(notesArea.getText()));
 
             PersonOrdinanceStatus ordinanceStatus = existingOrdinanceStatus == null
                     ? new PersonOrdinanceStatus()
@@ -153,7 +117,7 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
             ordinanceStatus.setInitiatoryStatus(selectedOrdinanceStatus(initiatoryStatusComboBox));
             ordinanceStatus.setEndowmentStatus(selectedOrdinanceStatus(endowmentStatusComboBox));
             ordinanceStatus.setSealedToParentsStatus(selectedOrdinanceStatus(sealedToParentsStatusComboBox));
-            ordinanceStatus.setOrdinanceNotes(clean(ordinanceNotesArea.getText()));
+            ordinanceStatus.setOrdinanceNotes(DateTextSupport.clean(ordinanceNotesArea.getText()));
 
             return new Result(result, ordinanceStatus);
         });
@@ -171,7 +135,7 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         grid.add(preferredNameField, 1, row++);
 
         grid.add(new Label("FamilySearch PID"), 0, row);
-        grid.add(fsPidField, 1, row++);
+        grid.add(fsPidFields.getNode(), 1, row++);
 
         grid.add(new Label("Given Names"), 0, row);
         grid.add(givenNamesField, 1, row++);
@@ -222,7 +186,7 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         grid.add(notesArea, 1, row);
 
         preferredNameField.setPrefWidth(320);
-        fsPidField.setPrefWidth(320);
+        fsPidFields.setPrefWidth(156);
         givenNamesField.setPrefWidth(320);
         surnameField.setPrefWidth(320);
         birthDateField.setPrefWidth(320);
@@ -246,7 +210,7 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         sealedToParentsStatusComboBox.getItems().setAll(OrdinanceStatus.values());
 
         preferredNameField.setPromptText("Required");
-        fsPidField.setPromptText("Optional, e.g. KWZ3-ABC");
+        fsPidFields.setValue(null);
         birthDateField.setPromptText("Optional text, e.g. 14 Jun 1904 or 1904");
         deathDateField.setPromptText("Optional text, e.g. 9 Mar 1988 or 1988");
 
@@ -303,7 +267,7 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         }
 
         preferredNameField.setText(nullSafe(existingPerson.getPreferredName()));
-        fsPidField.setText(nullSafe(existingPerson.getFsPid()));
+        fsPidFields.setValue(existingPerson.getFsPid());
         givenNamesField.setText(nullSafe(existingPerson.getGivenNames()));
         surnameField.setText(nullSafe(existingPerson.getSurname()));
 
@@ -429,55 +393,23 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         };
     }
 
-    private String normalizeBirthDateText(String value) {
-        String cleaned = clean(value);
-        if (cleaned == null) {
-            return null;
-        }
-
-        if (YEAR_ONLY_PATTERN.matcher(cleaned).matches()) {
-            return cleaned;
-        }
-
-        for (DateTimeFormatter formatter : FULL_DATE_INPUT_FORMATS) {
-            try {
-                return STANDARD_DATE_FORMAT.format(LocalDate.parse(cleaned, formatter));
-            } catch (DateTimeParseException ignored) {
-                // Try the next supported input format.
-            }
-        }
-
-        for (DateTimeFormatter formatter : MONTH_YEAR_INPUT_FORMATS) {
-            try {
-                return STANDARD_MONTH_YEAR_FORMAT.format(YearMonth.parse(cleaned, formatter));
-            } catch (DateTimeParseException ignored) {
-                // Leave unparseable values unchanged so free-text dates still work.
-            }
-        }
-
-        return cleaned;
-    }
-
-    private static DateTimeFormatter formatter(String pattern) {
-        return new DateTimeFormatterBuilder()
-                .parseCaseInsensitive()
-                .appendPattern(pattern)
-                .toFormatter(Locale.ENGLISH)
-                .withResolverStyle(ResolverStyle.STRICT);
-    }
-
     private String validateInputs() {
-        String preferredName = clean(preferredNameField.getText());
+        String preferredName = DateTextSupport.clean(preferredNameField.getText());
         if (preferredName == null) {
             return "Preferred name is required.";
         }
 
-        if (livingCheckBox.isSelected() && clean(deathDateField.getText()) != null) {
+        if (!fsPidFields.isCompleteOrBlank()) {
+            return "FamilySearch PID must be entered as four characters plus three characters.";
+        }
+
+        String normalizedDeathDate = DateTextSupport.normalizeDateText(deathDateField.getText());
+        if (livingCheckBox.isSelected() && normalizedDeathDate != null) {
             return "A living person cannot have a death date.";
         }
 
-        Integer birthYear = extractYear(birthDateField.getText());
-        Integer deathYear = extractYear(deathDateField.getText());
+        Integer birthYear = extractYear(DateTextSupport.normalizeDateText(birthDateField.getText()));
+        Integer deathYear = extractYear(normalizedDeathDate);
 
         if (birthYear != null && deathYear != null && deathYear < birthYear) {
             return "Death year cannot be earlier than birth year.";
@@ -497,15 +429,6 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         }
 
         return null;
-    }
-
-    private String clean(String value) {
-        if (value == null) {
-            return null;
-        }
-
-        String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String nullSafe(String value) {

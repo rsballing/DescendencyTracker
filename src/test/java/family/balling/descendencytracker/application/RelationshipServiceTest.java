@@ -58,6 +58,28 @@ class RelationshipServiceTest {
         assertEquals("That parent-child relationship already exists.", ex.getMessage());
     }
 
+    @Test
+    void addChildRejectsThirdParent() {
+        InMemoryPersonRepository people = new InMemoryPersonRepository();
+        people.put(person(1L, "Parent One"));
+        people.put(person(2L, "Parent Two"));
+        people.put(person(3L, "Parent Three"));
+        people.put(person(4L, "Child"));
+
+        InMemoryRelationshipRepository relationships = new InMemoryRelationshipRepository();
+        relationships.addExistingParentChild(1L, 4L);
+        relationships.addExistingParentChild(2L, 4L);
+
+        RelationshipService service = new RelationshipService(people, relationships);
+
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.addChild(3L, 4L, null, null)
+        );
+
+        assertEquals("A child cannot have more than two parents.", ex.getMessage());
+    }
+
     private Person person(long id, String name) {
         Person person = new Person();
         person.setPersonId(id);

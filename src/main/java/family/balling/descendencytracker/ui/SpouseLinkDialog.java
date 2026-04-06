@@ -16,6 +16,7 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
@@ -23,7 +24,9 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.VBox;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
@@ -33,7 +36,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
     private final CheckBox createNewPersonCheckBox = new CheckBox("Create a new spouse instead");
 
     private final TextField preferredNameField = new TextField();
-    private final TextField fsPidField = new TextField();
+    private final FsPidFields fsPidFields = new FsPidFields();
     private final TextField givenNamesField = new TextField();
     private final TextField surnameField = new TextField();
     private final ComboBox<Sex> sexComboBox = new ComboBox<>();
@@ -45,12 +48,17 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
     private final ComboBox<OrdinanceStatus> sealingStatusComboBox = new ComboBox<>();
     private final TextField sealingDateField = new TextField();
     private final TextArea sealingNotesArea = new TextArea();
+    private final VBox childSelectionBox = new VBox(6);
+    private final ScrollPane childSelectionPane = new ScrollPane(childSelectionBox);
+    private final List<CheckBox> childSelectionCheckBoxes = new ArrayList<>();
+    private final boolean allowChildSelection;
 
-    public SpouseLinkDialog(Person selectedPerson, List<Person> candidates) {
-        this(selectedPerson, candidates, null);
+    public SpouseLinkDialog(Person selectedPerson, List<Person> candidates, List<Person> childCandidates) {
+        this(selectedPerson, candidates, childCandidates, null);
     }
 
-    public SpouseLinkDialog(Person selectedPerson, List<Person> candidates, SpouseLink existingLink) {
+    public SpouseLinkDialog(Person selectedPerson, List<Person> candidates, List<Person> childCandidates, SpouseLink existingLink) {
+        this.allowChildSelection = existingLink == null;
         setTitle(existingLink == null ? "Add Spouse" : "Edit Spouse Link");
         setHeaderText(existingLink == null
                 ? "Add a spouse relationship for " + selectedPerson.getDisplayName()
@@ -75,10 +83,13 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         marriageDateField.setPromptText("Optional text, e.g. 14 Jun 1904 or 1904");
         marriageNotesArea.setWrapText(true);
         marriageNotesArea.setPrefRowCount(4);
-        fsPidField.setPromptText("Optional, e.g. KWZ3-ABC");
-        sealingDateField.setPromptText("Optional text");
+        sealingDateField.setPromptText("Optional text, e.g. 14 Jun 1904 or 1904");
         sealingNotesArea.setWrapText(true);
         sealingNotesArea.setPrefRowCount(4);
+        childSelectionPane.setFitToWidth(true);
+        childSelectionPane.setPrefViewportHeight(110);
+        childSelectionPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        populateChildChoices(childCandidates);
         sexComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleSexShortcut);
         sealingStatusComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleSealingStatusShortcut);
 
@@ -110,16 +121,10 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
 
         Node okButton = getDialogPane().lookupButton(ButtonType.OK);
         okButton.addEventFilter(ActionEvent.ACTION, event -> {
-            if (createNewPersonCheckBox.isSelected()) {
-                if (preferredNameField.getText() == null || preferredNameField.getText().isBlank()) {
-                    event.consume();
-                    showWarning("Please enter a preferred name for the new spouse.");
-                }
-            } else {
-                if (spouseComboBox.getValue() == null) {
-                    event.consume();
-                    showWarning("Please select a spouse.");
-                }
+            String validationError = validateInputs();
+            if (validationError != null) {
+                event.consume();
+                showWarning(validationError);
             }
         });
 
@@ -133,31 +138,33 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
             if (createNewPersonCheckBox.isSelected()) {
                 Person newPerson = new Person();
                 newPerson.setPreferredName(preferredNameField.getText().trim());
-                newPerson.setFsPid(clean(fsPidField.getText()));
-                newPerson.setGivenNames(clean(givenNamesField.getText()));
-                newPerson.setSurname(clean(surnameField.getText()));
+                newPerson.setFsPid(fsPidFields.getValue());
+                newPerson.setGivenNames(DateTextSupport.clean(givenNamesField.getText()));
+                newPerson.setSurname(DateTextSupport.clean(surnameField.getText()));
                 newPerson.setSex(sexComboBox.getValue());
                 newPerson.setLiving(livingCheckBox.isSelected());
 
                 return new Result(
                         null,
                         newPerson,
-                        clean(marriageDateField.getText()),
-                        clean(marriageNotesArea.getText()),
+                        DateTextSupport.normalizeDateText(marriageDateField.getText()),
+                        DateTextSupport.clean(marriageNotesArea.getText()),
                         sealingStatusComboBox.getValue(),
-                        clean(sealingDateField.getText()),
-                        clean(sealingNotesArea.getText())
+                        DateTextSupport.normalizeDateText(sealingDateField.getText()),
+                        DateTextSupport.clean(sealingNotesArea.getText()),
+                        selectedChildIds()
                 );
             }
 
             return new Result(
                     spouseComboBox.getValue().getPersonId(),
                     null,
-                    clean(marriageDateField.getText()),
-                    clean(marriageNotesArea.getText()),
+                    DateTextSupport.normalizeDateText(marriageDateField.getText()),
+                    DateTextSupport.clean(marriageNotesArea.getText()),
                     sealingStatusComboBox.getValue(),
-                    clean(sealingDateField.getText()),
-                    clean(sealingNotesArea.getText())
+                    DateTextSupport.normalizeDateText(sealingDateField.getText()),
+                    DateTextSupport.clean(sealingNotesArea.getText()),
+                    selectedChildIds()
             );
         });
     }
@@ -180,7 +187,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         grid.add(preferredNameField, 1, row++);
 
         grid.add(new Label("FamilySearch PID"), 0, row);
-        grid.add(fsPidField, 1, row++);
+        grid.add(fsPidFields.getNode(), 1, row++);
 
         grid.add(new Label("Given Names"), 0, row);
         grid.add(givenNamesField, 1, row++);
@@ -207,10 +214,15 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         grid.add(sealingDateField, 1, row++);
 
         grid.add(new Label("Sealing Notes"), 0, row);
-        grid.add(sealingNotesArea, 1, row);
+        grid.add(sealingNotesArea, 1, row++);
+
+        if (allowChildSelection) {
+            grid.add(new Label("Add Existing Children"), 0, row);
+            grid.add(childSelectionPane, 1, row);
+        }
 
         preferredNameField.setPrefWidth(320);
-        fsPidField.setPrefWidth(320);
+        fsPidFields.setPrefWidth(156);
         givenNamesField.setPrefWidth(320);
         surnameField.setPrefWidth(320);
 
@@ -283,19 +295,69 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         spouseComboBox.setDisable(creatingNew);
 
         preferredNameField.setDisable(!creatingNew);
-        fsPidField.setDisable(!creatingNew);
+        fsPidFields.setDisable(!creatingNew);
         givenNamesField.setDisable(!creatingNew);
         surnameField.setDisable(!creatingNew);
         sexComboBox.setDisable(!creatingNew);
         livingCheckBox.setDisable(!creatingNew);
     }
 
-    private String clean(String value) {
-        if (value == null) {
-            return null;
+    private void populateChildChoices(List<Person> childCandidates) {
+        childSelectionCheckBoxes.clear();
+        childSelectionBox.getChildren().clear();
+
+        if (!allowChildSelection || childCandidates == null || childCandidates.isEmpty()) {
+            childSelectionBox.getChildren().add(new Label("No children available to copy."));
+            return;
         }
-        String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
+
+        for (Person child : childCandidates) {
+            CheckBox checkBox = new CheckBox(formatPerson(child));
+            checkBox.setUserData(child.getPersonId());
+            childSelectionCheckBoxes.add(checkBox);
+            childSelectionBox.getChildren().add(checkBox);
+        }
+    }
+
+    private List<Long> selectedChildIds() {
+        List<Long> selectedIds = new ArrayList<>();
+        for (CheckBox checkBox : childSelectionCheckBoxes) {
+            if (checkBox.isSelected() && checkBox.getUserData() instanceof Long personId) {
+                selectedIds.add(personId);
+            }
+        }
+        return selectedIds;
+    }
+
+    private String validateInputs() {
+        if (createNewPersonCheckBox.isSelected()) {
+            if (preferredNameField.getText() == null || preferredNameField.getText().isBlank()) {
+                return "Please enter a preferred name for the new spouse.";
+            }
+        } else if (spouseComboBox.getValue() == null) {
+            return "Please select a spouse.";
+        }
+
+        if (createNewPersonCheckBox.isSelected() && !fsPidFields.isCompleteOrBlank()) {
+            return "FamilySearch PID must be entered as four characters plus three characters.";
+        }
+
+        return null;
+    }
+
+    private String formatPerson(Person person) {
+        if (person == null) {
+            return "";
+        }
+
+        String label = person.getDisplayName();
+        if (person.getBirthDateText() != null && !person.getBirthDateText().isBlank()) {
+            label += " (" + person.getBirthDateText() + ")";
+        }
+        if (person.getFsPid() != null && !person.getFsPid().isBlank()) {
+            label += " [" + person.getFsPid() + "]";
+        }
+        return label;
     }
 
     private void showWarning(String message) {
@@ -314,6 +376,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         private final OrdinanceStatus sealingStatus;
         private final String sealingStatusDate;
         private final String sealingNotes;
+        private final List<Long> childPersonIdsToCopy;
 
         public Result(
                 Long spousePersonId,
@@ -322,7 +385,8 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
                 String marriageNotes,
                 OrdinanceStatus sealingStatus,
                 String sealingStatusDate,
-                String sealingNotes
+                String sealingNotes,
+                List<Long> childPersonIdsToCopy
         ) {
             this.spousePersonId = spousePersonId;
             this.newPerson = newPerson;
@@ -331,6 +395,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
             this.sealingStatus = sealingStatus;
             this.sealingStatusDate = sealingStatusDate;
             this.sealingNotes = sealingNotes;
+            this.childPersonIdsToCopy = childPersonIdsToCopy == null ? List.of() : List.copyOf(childPersonIdsToCopy);
         }
 
         public Long getSpousePersonId() {
@@ -359,6 +424,10 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
 
         public String getSealingNotes() {
             return sealingNotes;
+        }
+
+        public List<Long> getChildPersonIdsToCopy() {
+            return childPersonIdsToCopy;
         }
     }
 }

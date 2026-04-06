@@ -36,6 +36,7 @@ public class RelationshipService {
         validatePersonExists(parentPersonId);
         validatePersonExists(childPersonId);
         validateChildOrder(childOrder);
+        validateChildHasParentCapacity(childPersonId, null);
         validateNoDuplicateParentChild(parentPersonId, childPersonId, null);
         validateNoParentChildCycle(parentPersonId, childPersonId);
 
@@ -52,6 +53,7 @@ public class RelationshipService {
         validatePersonExists(parentPersonId);
         validatePersonExists(childPersonId);
         validateChildOrder(childOrder);
+        validateChildHasParentCapacity(childPersonId, null);
         validateNoDuplicateParentChild(parentPersonId, childPersonId, null);
         validateNoParentChildCycle(parentPersonId, childPersonId);
 
@@ -68,6 +70,7 @@ public class RelationshipService {
         validatePersonExists(parentPersonId);
         validatePersonExists(childPersonId);
         validateChildOrder(childOrder);
+        validateChildHasParentCapacity(childPersonId, linkId);
         validateNoDuplicateParentChild(parentPersonId, childPersonId, linkId);
         validateNoParentChildCycle(parentPersonId, childPersonId);
 
@@ -85,6 +88,7 @@ public class RelationshipService {
         validatePersonExists(parentPersonId);
         validatePersonExists(childPersonId);
         validateChildOrder(childOrder);
+        validateChildHasParentCapacity(childPersonId, linkId);
         validateNoDuplicateParentChild(parentPersonId, childPersonId, linkId);
         validateNoParentChildCycle(parentPersonId, childPersonId);
 
@@ -192,6 +196,17 @@ public class RelationshipService {
             if (sameParent && !sameLink) {
                 throw new IllegalArgumentException("That parent-child relationship already exists.");
             }
+        }
+    }
+
+    private void validateChildHasParentCapacity(long childPersonId, Long currentLinkId) {
+        long activeParentCount = relationshipRepository.findParentsForChild(childPersonId).stream()
+                .filter(link -> link.getLinkId() != null)
+                .filter(link -> currentLinkId == null || !link.getLinkId().equals(currentLinkId))
+                .count();
+
+        if (activeParentCount >= 2) {
+            throw new IllegalArgumentException("A child cannot have more than two parents.");
         }
     }
 

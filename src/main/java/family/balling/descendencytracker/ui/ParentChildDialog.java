@@ -37,7 +37,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
     private final ComboBox<Person> mirrorSpouseComboBox = new ComboBox<>();
 
     private final TextField preferredNameField = new TextField();
-    private final TextField fsPidField = new TextField();
+    private final FsPidFields fsPidFields = new FsPidFields();
     private final TextField givenNamesField = new TextField();
     private final TextField surnameField = new TextField();
     private final ComboBox<Sex> sexComboBox = new ComboBox<>();
@@ -100,7 +100,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         notesArea.setWrapText(true);
         notesArea.setPrefRowCount(5);
         childOrderField.setPromptText("Optional integer");
-        fsPidField.setPromptText("Optional, e.g. KWZ3-ABC");
+        fsPidFields.setValue(null);
         sexComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleSexShortcut);
 
         if (existingLink != null) {
@@ -139,6 +139,11 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
                 if (preferredNameField.getText() == null || preferredNameField.getText().isBlank()) {
                     event.consume();
                     showWarning("Please enter a preferred name for the new person.");
+                    return;
+                }
+                if (!fsPidFields.isCompleteOrBlank()) {
+                    event.consume();
+                    showWarning("FamilySearch PID must be entered as four characters plus three characters.");
                     return;
                 }
             } else {
@@ -182,9 +187,9 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
             if (createNewPersonCheckBox.isSelected()) {
                 Person newPerson = new Person();
                 newPerson.setPreferredName(preferredNameField.getText().trim());
-                newPerson.setFsPid(clean(fsPidField.getText()));
-                newPerson.setGivenNames(clean(givenNamesField.getText()));
-                newPerson.setSurname(clean(surnameField.getText()));
+                newPerson.setFsPid(fsPidFields.getValue());
+                newPerson.setGivenNames(DateTextSupport.clean(givenNamesField.getText()));
+                newPerson.setSurname(DateTextSupport.clean(surnameField.getText()));
                 newPerson.setSex(sexComboBox.getValue());
                 newPerson.setLiving(livingCheckBox.isSelected());
 
@@ -235,7 +240,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         grid.add(preferredNameField, 1, row++);
 
         grid.add(new Label("FamilySearch PID"), 0, row);
-        grid.add(fsPidField, 1, row++);
+        grid.add(fsPidFields.getNode(), 1, row++);
 
         grid.add(new Label("Given Names"), 0, row);
         grid.add(givenNamesField, 1, row++);
@@ -256,7 +261,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         grid.add(notesArea, 1, row);
 
         preferredNameField.setPrefWidth(320);
-        fsPidField.setPrefWidth(320);
+        fsPidFields.setPrefWidth(156);
         givenNamesField.setPrefWidth(320);
         surnameField.setPrefWidth(320);
 
@@ -309,7 +314,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         relatedPersonComboBox.setDisable(creatingNew);
 
         preferredNameField.setDisable(!creatingNew);
-        fsPidField.setDisable(!creatingNew);
+        fsPidFields.setDisable(!creatingNew);
         givenNamesField.setDisable(!creatingNew);
         surnameField.setDisable(!creatingNew);
         sexComboBox.setDisable(!creatingNew);

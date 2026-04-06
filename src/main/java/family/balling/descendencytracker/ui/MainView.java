@@ -1834,7 +1834,7 @@ public class MainView extends BorderPane {
             return;
         }
 
-        List<Person> candidates = getOtherPeople(selected);
+        List<Person> candidates = getEligibleChildrenForParentSelection(selected, null);
         ParentChildDialog dialog = new ParentChildDialog(false, selected, candidates);
         Optional<ParentChildDialog.Result> result = dialog.showAndWait();
 
@@ -1870,7 +1870,7 @@ public class MainView extends BorderPane {
             return;
         }
 
-        List<Person> candidates = getOtherPeople(selected);
+        List<Person> candidates = getEligibleChildrenForParentSelection(selected, selectedLink);
         ParentChildDialog dialog = new ParentChildDialog(false, selected, candidates, selectedLink);
         Optional<ParentChildDialog.Result> result = dialog.showAndWait();
 
@@ -1939,7 +1939,7 @@ public class MainView extends BorderPane {
         }
 
         List<Person> candidates = getOtherPeople(selected);
-        SpouseLinkDialog dialog = new SpouseLinkDialog(selected, candidates);
+        SpouseLinkDialog dialog = new SpouseLinkDialog(selected, candidates, getChildrenForSpouseCopySelection(selected));
         Optional<SpouseLinkDialog.Result> result = dialog.showAndWait();
 
         result.ifPresent(input -> {
@@ -1955,6 +1955,8 @@ public class MainView extends BorderPane {
                         input.getSealingStatusDate(),
                         input.getSealingNotes()
                 );
+
+                copyChildrenToSpouse(input.getChildPersonIdsToCopy(), spousePersonId);
 
                 refreshPeople();
                 reselectPerson(selected.getPersonId());
@@ -1978,7 +1980,7 @@ public class MainView extends BorderPane {
         }
 
         List<Person> candidates = getOtherPeople(selected);
-        SpouseLinkDialog dialog = new SpouseLinkDialog(selected, candidates, selectedLink);
+        SpouseLinkDialog dialog = new SpouseLinkDialog(selected, candidates, List.of(), selectedLink);
         Optional<SpouseLinkDialog.Result> result = dialog.showAndWait();
 
         result.ifPresent(input -> {
@@ -2188,6 +2190,36 @@ public class MainView extends BorderPane {
                 .collect(Collectors.toList());
     }
 
+    private List<Person> getEligibleChildrenForParentSelection(Person selectedParent, ParentChildLink existingLink) {
+        Long existingChildId = existingLink == null ? null : existingLink.getChildPersonId();
+
+        return allPeople.stream()
+                .filter(person -> !person.getPersonId().equals(selectedParent.getPersonId()))
+                .filter(person -> canAssignAdditionalParent(person, existingChildId))
+                .collect(Collectors.toList());
+    }
+
+    private boolean canAssignAdditionalParent(Person candidateChild, Long existingChildId) {
+        if (candidateChild == null || candidateChild.getPersonId() == null) {
+            return false;
+        }
+
+        if (existingChildId != null && existingChildId.equals(candidateChild.getPersonId())) {
+            return true;
+        }
+
+        return relationshipService.getParentsForPerson(candidateChild.getPersonId()).size() < 2;
+    }
+
+    private List<Person> getChildrenForSpouseCopySelection(Person selectedPerson) {
+        return relationshipService.getChildrenForPerson(selectedPerson.getPersonId()).stream()
+                .map(link -> findPersonById(link.getChildPersonId()))
+                .filter(child -> child != null)
+                .filter(child -> relationshipService.getParentsForPerson(child.getPersonId()).size() < 2)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
     private Map<Long, List<Person>> buildSpouseCandidatesByPersonId(List<Person> people) {
         Map<Long, Person> peopleById = people.stream()
                 .filter(person -> person.getPersonId() != null)
@@ -2224,6 +2256,19 @@ public class MainView extends BorderPane {
                 childOrder,
                 notes
         );
+    }
+
+    private void copyChildrenToSpouse(List<Long> childPersonIds, long spousePersonId) {
+        if (childPersonIds == null || childPersonIds.isEmpty()) {
+            return;
+        }
+
+        for (Long childPersonId : childPersonIds) {
+            if (childPersonId == null) {
+                continue;
+            }
+            syncMirroredParentLink(childPersonId, spousePersonId, null, null);
+        }
     }
 
     private void updateSummaryCard(Person person) {
