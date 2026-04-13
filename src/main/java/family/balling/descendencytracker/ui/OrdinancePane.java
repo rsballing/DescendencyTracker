@@ -76,11 +76,13 @@ final class OrdinancePane {
                 saveButton,
                 refreshButton
         );
+        toolbar.getStyleClass().add("section-toolbar");
 
         GridPane grid = new GridPane();
         grid.setPadding(new Insets(10));
         grid.setHgap(10);
         grid.setVgap(10);
+        grid.getStyleClass().add("editor-grid");
 
         int row = 0;
         grid.add(new Label("Baptism"), 0, row);
@@ -97,13 +99,18 @@ final class OrdinancePane {
         grid.add(ordinanceNotesArea, 1, row);
 
         TitledPane editorPane = new TitledPane("Person Ordinance Editor", grid);
+        editorPane.getStyleClass().add("section-pane");
         editorPane.setCollapsible(false);
 
         TitledPane spouseSealingPane = new TitledPane("Spouse Sealings", spouseSealingEditorBox);
+        spouseSealingPane.getStyleClass().add("section-pane");
         spouseSealingPane.setCollapsible(false);
 
         content = new VBox(8, headerLabel, toolbar, ordinanceTable, editorPane, spouseSealingPane);
         content.setPadding(new Insets(10));
+        content.getStyleClass().add("panel-surface");
+        headerLabel.getStyleClass().add("section-title");
+        ordinanceTable.getStyleClass().add("compact-table");
     }
 
     VBox getContent() {
@@ -243,6 +250,8 @@ final class OrdinancePane {
                 statusColumn,
                 detailsColumn
         );
+        ordinanceTable.setPlaceholder(new Label("No ordinance rows for the selected person."));
+        ordinanceTable.setFixedCellSize(23);
 
         ordinanceTable.setFocusTraversable(true);
         ordinanceTable.setOnKeyPressed(event -> {
@@ -311,9 +320,11 @@ final class OrdinancePane {
             Label detailsLabel = new Label(buildSpouseOrdinanceDetails(spouseLink));
             detailsLabel.setWrapText(true);
             detailsLabel.setMaxWidth(420);
+            detailsLabel.getStyleClass().add("muted-text");
 
             HBox row = new HBox(10, spouseLabel, sealingStatusCombo, detailsLabel);
             row.setFillHeight(true);
+            row.getStyleClass().add("inline-editor-row");
             spouseSealingEditorBox.getChildren().add(row);
         }
     }

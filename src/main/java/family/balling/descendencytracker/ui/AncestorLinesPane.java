@@ -1,7 +1,6 @@
 package family.balling.descendencytracker.ui;
 
 import family.balling.descendencytracker.domain.AncestorLineSummary;
-import family.balling.descendencytracker.domain.enums.LineStewardshipStatus;
 import family.balling.descendencytracker.domain.enums.OrdinanceStatus;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
@@ -9,17 +8,18 @@ import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
 import javafx.geometry.Insets;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
-import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToolBar;
 import javafx.scene.input.KeyCode;
-import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 
 import java.time.LocalDate;
@@ -28,6 +28,10 @@ import java.util.List;
 import java.util.function.Consumer;
 
 final class AncestorLinesPane {
+    private final ObservableList<AncestorLineSummary> allAncestorLines = FXCollections.observableArrayList();
+    private final FilteredList<AncestorLineSummary> filteredAncestorLines = new FilteredList<>(allAncestorLines, row -> true);
+    private final SortedList<AncestorLineSummary> sortedAncestorLines = new SortedList<>(filteredAncestorLines);
+
     private final ObservableList<LineWorkbenchRow> allLineWorkbenchRows = FXCollections.observableArrayList();
     private final FilteredList<LineWorkbenchRow> filteredLineWorkbenchRows = new FilteredList<>(allLineWorkbenchRows, row -> true);
     private final SortedList<LineWorkbenchRow> sortedLineWorkbenchRows = new SortedList<>(filteredLineWorkbenchRows);
@@ -35,34 +39,37 @@ final class AncestorLinesPane {
     private final TableView<AncestorLineSummary> ancestorLineTable = new TableView<>();
     private final TableView<LineWorkbenchRow> lineWorkbenchTable = new TableView<>();
     private final ComboBox<String> lineWorkbenchFilterCombo = new ComboBox<>();
-    private final Label ancestorStewardshipAncestorValue = new Label("Select an ancestor line to manage stewardship.");
+    private final ComboBox<String> lineStatusFilterCombo = new ComboBox<>();
+    private final TextField lineSearchField = new TextField();
     private final Label lineWorkbenchAncestorValue = new Label("Select an ancestor line to open the workbench.");
-    private final ComboBox<LineStewardshipStatus> ancestorStewardshipStatusCombo = new ComboBox<>();
-    private final TextArea ancestorStewardshipNotesArea = new TextArea();
     private final VBox content;
 
     AncestorLinesPane(
             Runnable onOpenAncestor,
             Runnable onRefreshLines,
-            Runnable onSaveStewardship,
-            Runnable onReloadStewardship,
             Runnable onOpenWorkbenchPerson,
             Consumer<OrdinanceStatus> onUpdateWorkbenchStatus,
             Runnable onRefreshWorkbench,
             Consumer<AncestorLineSummary> onSelectedAncestorChanged
     ) {
+        configureAncestorLineControls();
         configureAncestorLineTable(onOpenAncestor, onSelectedAncestorChanged);
         configureLineWorkbenchControls();
         configureLineWorkbenchTable(onOpenWorkbenchPerson, onUpdateWorkbenchStatus);
-        configureStewardshipControls();
 
+        sortedAncestorLines.comparatorProperty().bind(ancestorLineTable.comparatorProperty());
+        ancestorLineTable.setItems(sortedAncestorLines);
         sortedLineWorkbenchRows.comparatorProperty().bind(lineWorkbenchTable.comparatorProperty());
         lineWorkbenchTable.setItems(sortedLineWorkbenchRows);
 
         Button openAncestorButton = new Button("Open Selected Ancestor");
         Button refreshButton = new Button("Refresh Ancestor Lines");
-        Button saveStewardshipButton = new Button("Save Stewardship");
-        Button reloadStewardshipButton = new Button("Reload Stewardship");
+        Button clearFiltersButton = new Button("Clear Filters");
+        Button lineStatusHelpButton = new Button("?");
+        lineStatusHelpButton.setFocusTraversable(false);
+        lineStatusHelpButton.getStyleClass().addAll("icon-button", "utility-button");
+        lineStatusHelpButton.setOnAction(event -> showLineStatusHelp());
+
         Button openWorkbenchPersonButton = new Button("Open Selected Person");
         Button markWorkbenchCompleteButton = new Button("Complete");
         Button markWorkbenchOpenButton = new Button("Open");
@@ -71,8 +78,7 @@ final class AncestorLinesPane {
 
         openAncestorButton.setOnAction(event -> onOpenAncestor.run());
         refreshButton.setOnAction(event -> onRefreshLines.run());
-        saveStewardshipButton.setOnAction(event -> onSaveStewardship.run());
-        reloadStewardshipButton.setOnAction(event -> onReloadStewardship.run());
+        clearFiltersButton.setOnAction(event -> clearAncestorLineFilters());
         openWorkbenchPersonButton.setOnAction(event -> onOpenWorkbenchPerson.run());
         markWorkbenchCompleteButton.setOnAction(event -> onUpdateWorkbenchStatus.accept(OrdinanceStatus.COMPLETE));
         markWorkbenchOpenButton.setOnAction(event -> onUpdateWorkbenchStatus.accept(OrdinanceStatus.OPEN));
@@ -82,23 +88,14 @@ final class AncestorLinesPane {
         ToolBar toolbar = new ToolBar(
                 openAncestorButton,
                 refreshButton,
-                saveStewardshipButton,
-                reloadStewardshipButton
+                new Label("Line Status"),
+                lineStatusFilterCombo,
+                lineStatusHelpButton,
+                new Label("Find"),
+                lineSearchField,
+                clearFiltersButton
         );
-
-        GridPane stewardshipGrid = new GridPane();
-        stewardshipGrid.setHgap(10);
-        stewardshipGrid.setVgap(10);
-        stewardshipGrid.setPadding(new Insets(10));
-        stewardshipGrid.add(new Label("Selected Ancestor"), 0, 0);
-        stewardshipGrid.add(ancestorStewardshipAncestorValue, 1, 0);
-        stewardshipGrid.add(new Label("Stewardship"), 0, 1);
-        stewardshipGrid.add(ancestorStewardshipStatusCombo, 1, 1);
-        stewardshipGrid.add(new Label("Notes"), 0, 2);
-        stewardshipGrid.add(ancestorStewardshipNotesArea, 1, 2);
-
-        TitledPane stewardshipPane = new TitledPane("Line Stewardship", stewardshipGrid);
-        stewardshipPane.setCollapsible(false);
+        toolbar.getStyleClass().add("section-toolbar");
 
         ToolBar workbenchToolbar = new ToolBar(
                 openWorkbenchPersonButton,
@@ -109,13 +106,16 @@ final class AncestorLinesPane {
                 new Label("Show"),
                 lineWorkbenchFilterCombo
         );
+        workbenchToolbar.getStyleClass().add("section-toolbar");
 
         VBox workbenchContent = new VBox(8, lineWorkbenchAncestorValue, workbenchToolbar, lineWorkbenchTable);
         TitledPane workbenchPane = new TitledPane("Line Workbench", workbenchContent);
+        workbenchPane.getStyleClass().add("section-pane");
         workbenchPane.setCollapsible(false);
 
-        content = new VBox(8, toolbar, ancestorLineTable, workbenchPane, stewardshipPane);
+        content = new VBox(8, toolbar, ancestorLineTable, workbenchPane);
         content.setPadding(new Insets(10));
+        content.getStyleClass().add("panel-surface");
     }
 
     VBox getContent() {
@@ -130,22 +130,15 @@ final class AncestorLinesPane {
         return lineWorkbenchTable.getSelectionModel().getSelectedItem();
     }
 
-    LineStewardshipStatus getStewardshipStatus() {
-        return ancestorStewardshipStatusCombo.getValue();
-    }
-
-    String getStewardshipNotes() {
-        return ancestorStewardshipNotesArea.getText();
-    }
-
     void setAncestorLines(List<AncestorLineSummary> summaries) {
-        ancestorLineTable.setItems(FXCollections.observableArrayList(summaries));
+        allAncestorLines.setAll(summaries);
+        applyAncestorLineFilter();
     }
 
     void clearAncestorLines() {
-        ancestorLineTable.setItems(FXCollections.observableArrayList());
+        allAncestorLines.clear();
+        applyAncestorLineFilter();
         clearWorkbench();
-        loadStewardship(null);
     }
 
     boolean reselectAncestorLine(Long ancestorPersonId) {
@@ -216,27 +209,66 @@ final class AncestorLinesPane {
         }
     }
 
-    void loadStewardship(AncestorLineSummary summary) {
-        if (summary == null || summary.getAncestorPersonId() == null) {
-            ancestorStewardshipAncestorValue.setText("Select an ancestor line to manage stewardship.");
-            ancestorStewardshipStatusCombo.setValue(LineStewardshipStatus.UNASSIGNED);
-            ancestorStewardshipNotesArea.setText("");
-            ancestorStewardshipStatusCombo.setDisable(true);
-            ancestorStewardshipNotesArea.setDisable(true);
-            return;
-        }
-
-        ancestorStewardshipAncestorValue.setText(nullSafe(summary.getAncestorDisplayName()));
-        ancestorStewardshipStatusCombo.setDisable(false);
-        ancestorStewardshipNotesArea.setDisable(false);
-        ancestorStewardshipStatusCombo.setValue(
-                summary.getStewardshipStatus() == null ? LineStewardshipStatus.UNASSIGNED : summary.getStewardshipStatus()
-        );
-        ancestorStewardshipNotesArea.setText(nullSafe(summary.getStewardshipNotes()));
-    }
-
     void refreshAncestorLineTable() {
         ancestorLineTable.refresh();
+    }
+
+    private void configureAncestorLineControls() {
+        lineStatusFilterCombo.getItems().setAll(
+                "All Lines",
+                "Open Now",
+                "Opening Soon",
+                "Waiting 110",
+                "Unresolved",
+                "Complete For Now",
+                "Not Reviewed"
+        );
+        lineStatusFilterCombo.setValue("All Lines");
+        lineStatusFilterCombo.valueProperty().addListener((obs, oldValue, newValue) -> applyAncestorLineFilter());
+
+        lineSearchField.setPromptText("Search ancestor lines...");
+        lineSearchField.setPrefWidth(260);
+        lineSearchField.textProperty().addListener((obs, oldValue, newValue) -> applyAncestorLineFilter());
+    }
+
+    private void clearAncestorLineFilters() {
+        lineStatusFilterCombo.setValue("All Lines");
+        lineSearchField.clear();
+    }
+
+    private void applyAncestorLineFilter() {
+        String searchText = lineSearchField.getText() == null ? "" : lineSearchField.getText().trim().toLowerCase();
+        String statusFilter = lineStatusFilterCombo.getValue();
+
+        filteredAncestorLines.setPredicate(row -> {
+            if (row == null) {
+                return false;
+            }
+
+            if (statusFilter != null && !"All Lines".equals(statusFilter) && !matchesStatusFilter(row, statusFilter)) {
+                return false;
+            }
+
+            if (searchText.isBlank()) {
+                return true;
+            }
+
+            return containsIgnoreCase(row.getAncestorDisplayName(), searchText)
+                    || containsIgnoreCase(row.getSummaryReason(), searchText)
+                    || (row.getBadgeStatus() != null && row.getBadgeStatus().name().toLowerCase().contains(searchText));
+        });
+    }
+
+    private boolean matchesStatusFilter(AncestorLineSummary row, String statusFilter) {
+        return switch (statusFilter) {
+            case "Open Now" -> row.getOpenCount() > 0;
+            case "Opening Soon" -> row.getOpeningSoonCount() > 0;
+            case "Waiting 110" -> row.getWaiting110Count() > 0;
+            case "Unresolved" -> row.getUnresolvedCount() > 0;
+            case "Complete For Now" -> row.getBadgeStatus() != null && row.getBadgeStatus().name().equals("COMPLETE_FOR_NOW");
+            case "Not Reviewed" -> row.getBadgeStatus() != null && row.getBadgeStatus().name().equals("NOT_REVIEWED");
+            default -> true;
+        };
     }
 
     private void configureAncestorLineTable(Runnable onOpenAncestor, Consumer<AncestorLineSummary> onSelectedAncestorChanged) {
@@ -246,17 +278,11 @@ final class AncestorLinesPane {
         );
         ancestorColumn.setPrefWidth(220);
 
-        TableColumn<AncestorLineSummary, String> stewardshipColumn = new TableColumn<>("Stewardship");
-        stewardshipColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(data.getValue().getStewardshipStatus() == null ? "" : data.getValue().getStewardshipStatus().name())
-        );
-        stewardshipColumn.setPrefWidth(150);
-
-        TableColumn<AncestorLineSummary, String> badgeColumn = new TableColumn<>("Badge");
+        TableColumn<AncestorLineSummary, String> badgeColumn = new TableColumn<>("Line Status");
         badgeColumn.setCellValueFactory(data ->
                 new ReadOnlyStringWrapper(data.getValue().getBadgeStatus() == null ? "" : data.getValue().getBadgeStatus().name())
         );
-        badgeColumn.setPrefWidth(130);
+        badgeColumn.setPrefWidth(150);
 
         TableColumn<AncestorLineSummary, String> openColumn = new TableColumn<>("Open");
         openColumn.setCellValueFactory(data -> new ReadOnlyStringWrapper(String.valueOf(data.getValue().getOpenCount())));
@@ -288,7 +314,6 @@ final class AncestorLinesPane {
 
         ancestorLineTable.getColumns().addAll(
                 ancestorColumn,
-                stewardshipColumn,
                 badgeColumn,
                 openColumn,
                 soonColumn,
@@ -297,6 +322,9 @@ final class AncestorLinesPane {
                 nextColumn,
                 reasonColumn
         );
+        ancestorLineTable.getStyleClass().add("compact-table");
+        ancestorLineTable.setPlaceholder(new Label("No ancestor lines available."));
+        ancestorLineTable.setFixedCellSize(23);
 
         ancestorLineTable.setRowFactory(table -> {
             TableRow<AncestorLineSummary> row = new TableRow<>();
@@ -385,6 +413,9 @@ final class AncestorLinesPane {
                 suggestedColumn,
                 reasonColumn
         );
+        lineWorkbenchTable.getStyleClass().add("compact-table");
+        lineWorkbenchTable.setPlaceholder(new Label("No workbench items for this line."));
+        lineWorkbenchTable.setFixedCellSize(23);
 
         lineWorkbenchTable.setRowFactory(table -> {
             TableRow<LineWorkbenchRow> row = new TableRow<>();
@@ -410,14 +441,6 @@ final class AncestorLinesPane {
                 event.consume();
             }
         });
-    }
-
-    private void configureStewardshipControls() {
-        ancestorStewardshipStatusCombo.getItems().setAll(LineStewardshipStatus.values());
-        ancestorStewardshipStatusCombo.setValue(LineStewardshipStatus.UNASSIGNED);
-        ancestorStewardshipNotesArea.setWrapText(true);
-        ancestorStewardshipNotesArea.setPrefRowCount(4);
-        loadStewardship(null);
     }
 
     private void applyLineWorkbenchFilter() {
@@ -464,6 +487,25 @@ final class AncestorLinesPane {
             case DIGIT0, NUMPAD0 -> OrdinanceStatus.SOON_10Y;
             default -> null;
         };
+    }
+
+    private void showLineStatusHelp() {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Line Status");
+        alert.setHeaderText("Line status meanings");
+        alert.setContentText(
+                "OPEN_NOW: at least one tracked item in the line is actionable now.\n\n" +
+                        "OPENING_SOON: items in the line are expected to open soon.\n\n" +
+                        "WAITING_110: the line is mainly waiting on the 110-year rule.\n\n" +
+                        "UNRESOLVED: more information is needed before eligibility can be determined.\n\n" +
+                        "NOT_REVIEWED: one or more people in the line still need review.\n\n" +
+                        "COMPLETE_FOR_NOW: nothing in the line needs immediate attention."
+        );
+        alert.showAndWait();
+    }
+
+    private boolean containsIgnoreCase(String value, String searchTextLower) {
+        return value != null && value.toLowerCase().contains(searchTextLower);
     }
 
     private String formatSummaryDate(LocalDate value) {

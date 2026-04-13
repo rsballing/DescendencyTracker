@@ -2,35 +2,36 @@ package family.balling.descendencytracker.ui;
 
 import family.balling.descendencytracker.application.BackupService;
 import family.balling.descendencytracker.application.AncestorLineSummaryService;
-import family.balling.descendencytracker.application.LineStewardshipService;
 import family.balling.descendencytracker.application.OrdinanceEligibilityService;
 import family.balling.descendencytracker.application.OrdinanceService;
 import family.balling.descendencytracker.application.PersonService;
 import family.balling.descendencytracker.application.RelationshipService;
 import family.balling.descendencytracker.application.WorkQueueService;
 import family.balling.descendencytracker.domain.AncestorLineSummary;
-import family.balling.descendencytracker.domain.LineStewardship;
 import family.balling.descendencytracker.domain.OrdinanceEligibilityRow;
 import family.balling.descendencytracker.domain.ParentChildLink;
 import family.balling.descendencytracker.domain.Person;
 import family.balling.descendencytracker.domain.PersonOrdinanceStatus;
 import family.balling.descendencytracker.domain.SpouseLink;
 import family.balling.descendencytracker.domain.WorkQueueRow;
-import family.balling.descendencytracker.domain.enums.LineStewardshipStatus;
 import family.balling.descendencytracker.domain.enums.OrdinanceStatus;
+import javafx.animation.PauseTransition;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -41,14 +42,25 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToolBar;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeItem;
+import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeView;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
+import javafx.util.Duration;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -56,25 +68,39 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 public class MainView extends BorderPane {
+    private static final KeyCodeCombination ROOT_SHORTCUT =
+            new KeyCodeCombination(KeyCode.R, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination DETAILS_SHORTCUT =
+            new KeyCodeCombination(KeyCode.D, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination EDIT_SHORTCUT =
+            new KeyCodeCombination(KeyCode.E, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination DELETE_SHORTCUT =
+            new KeyCodeCombination(KeyCode.DELETE, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination HIDE_DETAILS_SHORTCUT =
+            new KeyCodeCombination(KeyCode.H, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination DISABLED_NEW_PERSON_SHORTCUT =
+            new KeyCodeCombination(KeyCode.N, KeyCombination.SHORTCUT_DOWN);
     private static final DateTimeFormatter BACKUP_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final DateTimeFormatter SUMMARY_DATE_FORMAT =
             DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM);
+    private static final String DATA_ACTIONS_PLACEHOLDER = "Data Actions...";
 
     private final PersonService personService;
     private final RelationshipService relationshipService;
     private final OrdinanceService ordinanceService;
     private final AncestorLineSummaryService ancestorLineSummaryService;
-    private final LineStewardshipService lineStewardshipService;
     private final OrdinanceEligibilityService ordinanceEligibilityService;
     private final BackupService backupService;
     private final WorkQueueService workQueueService;
@@ -84,28 +110,29 @@ public class MainView extends BorderPane {
     private final ObservableList<WorkQueueRow> allWorkQueueRows = FXCollections.observableArrayList();
     private final FilteredList<WorkQueueRow> filteredWorkQueueRows = new FilteredList<>(allWorkQueueRows, row -> true);
     private final SortedList<WorkQueueRow> sortedWorkQueueRows = new SortedList<>(filteredWorkQueueRows);
-    private final ObservableList<AncestorLineSummary> allReportRows = FXCollections.observableArrayList();
-    private final FilteredList<AncestorLineSummary> filteredReportRows = new FilteredList<>(allReportRows, row -> true);
-    private final SortedList<AncestorLineSummary> sortedReportRows = new SortedList<>(filteredReportRows);
     private final TableView<Person> personTable;
     private final TableView<ParentChildLink> parentsTable = new TableView<>();
     private final TableView<ParentChildLink> childrenTable = new TableView<>();
     private final TableView<SpouseLink> spousesTable = new TableView<>();
     private final TableView<OrdinanceEligibilityRow> eligibilityTable = new TableView<>();
     private final TableView<WorkQueueRow> workQueueTable = new TableView<>();
-    private final TableView<AncestorLineSummary> reportsTable = new TableView<>();
+    private final TabPane workspaceTabs = new TabPane();
 
     private final TreeView<TreePersonNode> pedigreeTree = new TreeView<>();
     private final TreeView<TreePersonNode> descendancyTree = new TreeView<>();
 
     private final TextArea detailArea = new TextArea();
+    private final Label activeRootLabel = new Label("Current Root: (none)");
+    private final Label selectedPersonNameLabel = new Label("None selected");
+    private final Label selectedPersonFsPidLabel = new Label();
+    private final Label relationshipToRootValue = new Label();
     private final Label statusLabel = new Label();
+    private final Button shortcutsHelpButton = new Button("?");
+    private final ComboBox<String> dataActionsComboBox = new ComboBox<>();
 
     private final TextField workQueueSearchField = new TextField();
     private final CheckBox workQueueActionableOnlyCheckBox = new CheckBox("Open/Soon only");
     private final ComboBox<String> workQueueBucketFilterCombo = new ComboBox<>();
-    private final TextField reportSearchField = new TextField();
-    private final ComboBox<String> reportTypeFilterCombo = new ComboBox<>();
     private final Label summaryPreferredNameValue = new Label();
     private final Label summaryFsPidValue = new Label();
     private final Label summaryRootValue = new Label();
@@ -114,26 +141,33 @@ public class MainView extends BorderPane {
     private final Label summarySpousesValue = new Label();
     private final Label summaryAncestorsValue = new Label();
     private final Label summaryDescendantsValue = new Label();
-    private final Label summaryLineBadgeValue = new Label();
+    private final Label summaryLineStatusValue = new Label();
     private final Label summaryLineNextAvailableValue = new Label();
     private final Label summaryLineOpenValue = new Label();
     private final Label summaryLineSoonValue = new Label();
     private final Label summaryLineWaitingValue = new Label();
     private final Label summaryLineUnresolvedValue = new Label();
     private final Label summaryLineCompleteValue = new Label();
-    private final Label summaryLineStewardshipValue = new Label();
     private final Label summaryLineReasonValue = new Label();
 
     private final Map<Long, AncestorLineSummary> ancestorSummaryCache = new HashMap<>();
+    private final Map<Long, List<AncestorLineSummary>> ancestorSummariesByPersonIdCache = new HashMap<>();
+    private final Map<Long, OrdinanceTabData> ordinanceTabDataByPersonIdCache = new HashMap<>();
     private final PeopleNavigatorPane peopleNavigatorPane;
     private final OrdinancePane ordinancePane;
     private final AncestorLinesPane ancestorLinesPane;
+    private final PauseTransition ancestorLinesWarmupDelay = new PauseTransition(Duration.millis(180));
+    private final PauseTransition ordinancesWarmupDelay = new PauseTransition(Duration.millis(220));
+    private Stage personDetailsStage;
+    private Stage shortcutsStage;
+    private boolean syncingTreeSelection;
+    private boolean resettingDataActionsComboBox;
+    private Long renderedTreeRootPersonId;
 
     public MainView(PersonService personService,
                     RelationshipService relationshipService,
                     OrdinanceService ordinanceService,
                     AncestorLineSummaryService ancestorLineSummaryService,
-                    LineStewardshipService lineStewardshipService,
                     OrdinanceEligibilityService ordinanceEligibilityService,
                     BackupService backupService,
                     WorkQueueService workQueueService) {
@@ -141,12 +175,14 @@ public class MainView extends BorderPane {
         this.relationshipService = relationshipService;
         this.ordinanceService = ordinanceService;
         this.ancestorLineSummaryService = ancestorLineSummaryService;
-        this.lineStewardshipService = lineStewardshipService;
         this.ordinanceEligibilityService = ordinanceEligibilityService;
         this.backupService = backupService;
         this.workQueueService = workQueueService;
         this.peopleNavigatorPane = new PeopleNavigatorPane(
+                this::addPerson,
                 this::editSelectedPerson,
+                this::showPersonDetailsDialog,
+                this::setSelectedAsRoot,
                 this::handleSelectedPersonChanged,
                 this::hasIncompleteTrackedOrdinances
         );
@@ -154,8 +190,6 @@ public class MainView extends BorderPane {
         this.ancestorLinesPane = new AncestorLinesPane(
                 this::openSelectedAncestorLine,
                 () -> refreshAncestorLineTable(getSelectedPerson()),
-                this::saveSelectedAncestorStewardship,
-                this::reloadSelectedAncestorStewardship,
                 this::openSelectedLineWorkbenchPerson,
                 this::updateSelectedLineWorkbenchStatus,
                 this::refreshSelectedAncestorLineWorkbench,
@@ -166,42 +200,37 @@ public class MainView extends BorderPane {
                 () -> updateOrdinanceEditor(getSelectedPerson()),
                 this::updateSelectedOrdinanceStatus
         );
+        ancestorLinesWarmupDelay.setOnFinished(event -> warmAncestorLinesForCurrentSelection());
+        ordinancesWarmupDelay.setOnFinished(event -> warmOrdinancesForCurrentSelection());
         buildUi();
+        sceneProperty().addListener((obs, oldScene, newScene) -> {
+            if (oldScene != null) {
+                oldScene.getAccelerators().remove(ROOT_SHORTCUT);
+                oldScene.getAccelerators().remove(DETAILS_SHORTCUT);
+                oldScene.getAccelerators().remove(EDIT_SHORTCUT);
+                oldScene.getAccelerators().remove(DELETE_SHORTCUT);
+                oldScene.getAccelerators().remove(HIDE_DETAILS_SHORTCUT);
+                oldScene.getAccelerators().remove(DISABLED_NEW_PERSON_SHORTCUT);
+            }
+            if (newScene != null) {
+                newScene.getAccelerators().put(ROOT_SHORTCUT, this::setSelectedAsRoot);
+                newScene.getAccelerators().put(DETAILS_SHORTCUT, this::showPersonDetailsDialog);
+                newScene.getAccelerators().put(EDIT_SHORTCUT, this::editSelectedOrRootPerson);
+                newScene.getAccelerators().put(DELETE_SHORTCUT, this::deleteSelectedPerson);
+                newScene.getAccelerators().put(HIDE_DETAILS_SHORTCUT, this::hidePersonDetailsDialog);
+                newScene.getAccelerators().put(DISABLED_NEW_PERSON_SHORTCUT, () -> {
+                });
+            }
+        });
         refreshPeople();
     }
 
     private void buildUi() {
+        getStyleClass().add("app-root");
         setPadding(new Insets(10));
 
-        Button addButton = new Button("Add Person");
-        Button editButton = new Button("Edit Person");
-        Button deleteButton = new Button("Delete Person");
-        Button setRootButton = new Button("Set Root");
-        Button refreshButton = new Button("Refresh");
-        Button exportBackupButton = new Button("Export Backup");
-        Button importBackupButton = new Button("Import Backup");
-
-        addButton.setOnAction(event -> addPerson());
-        editButton.setOnAction(event -> editSelectedPerson());
-        deleteButton.setOnAction(event -> deleteSelectedPerson());
-        setRootButton.setOnAction(event -> setSelectedAsRoot());
-        refreshButton.setOnAction(event -> refreshPeople());
-        exportBackupButton.setOnAction(event -> exportBackup());
-        importBackupButton.setOnAction(event -> importBackup());
-
-        ToolBar personToolBar = new ToolBar(
-                addButton,
-                editButton,
-                deleteButton,
-                setRootButton,
-                refreshButton,
-                exportBackupButton,
-                importBackupButton
-        );
-
-        ToolBar filterToolBar = peopleNavigatorPane.getFilterToolBar();
-
-        setTop(new VBox(6, personToolBar, filterToolBar));
+        activeRootLabel.getStyleClass().add("root-chip");
+        setTop(activeRootLabel);
 
         configureParentsTable();
         configureChildrenTable();
@@ -209,48 +238,76 @@ public class MainView extends BorderPane {
         configureEligibilityTable();
         configureWorkQueueControls();
         configureWorkQueueTable();
-        configureReportControls();
-        configureReportsTable();
         configurePedigreeTree();
         configureDescendancyTree();
 
         sortedWorkQueueRows.comparatorProperty().bind(workQueueTable.comparatorProperty());
         workQueueTable.setItems(sortedWorkQueueRows);
-        sortedReportRows.comparatorProperty().bind(reportsTable.comparatorProperty());
-        reportsTable.setItems(sortedReportRows);
 
         detailArea.setEditable(false);
         detailArea.setWrapText(true);
+        detailArea.setPrefRowCount(18);
+        buildPersonDetailsStage();
+        buildShortcutsStage();
 
-        TitledPane summaryPane = buildSummaryPane();
-
-        VBox detailPane = new VBox(
-                8,
-                summaryPane,
-                new Label("Selected Person Details"),
-                detailArea
+        workspaceTabs.getTabs().add(new Tab("Work Queue", buildWorkQueueTabContent()));
+        workspaceTabs.getTabs().add(new Tab("Ordinances", buildOrdinancesTabContent()));
+        workspaceTabs.getTabs().add(new Tab("Ancestor Lines", buildAncestorLinesTabContent()));
+        workspaceTabs.getTabs().add(new Tab("Family", buildFamilyTabContent()));
+        workspaceTabs.getStyleClass().add("workspace-tabs");
+        workspaceTabs.getTabs().forEach(tab -> tab.setClosable(false));
+        workspaceTabs.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) ->
+                refreshVisibleWorkspaceTab(getSelectedPerson())
         );
-        detailPane.setPadding(new Insets(10));
+        selectedPersonNameLabel.getStyleClass().add("selected-person-name");
+        selectedPersonFsPidLabel.getStyleClass().add("selected-person-meta");
 
-        TabPane relationshipTabs = new TabPane();
-        relationshipTabs.getTabs().add(new Tab("Details", detailPane));
-        relationshipTabs.getTabs().add(new Tab("Work Queue", buildWorkQueueTabContent()));
-        relationshipTabs.getTabs().add(new Tab("Eligibility", buildEligibilityTabContent()));
-        relationshipTabs.getTabs().add(new Tab("Ordinances", buildOrdinancesTabContent()));
-        relationshipTabs.getTabs().add(new Tab("Ancestor Lines", buildAncestorLinesTabContent()));
-        relationshipTabs.getTabs().add(new Tab("Reports", buildReportsTabContent()));
-        relationshipTabs.getTabs().add(new Tab("Pedigree", buildPedigreeTabContent()));
-        relationshipTabs.getTabs().add(new Tab("Descendancy", buildDescendancyTabContent()));
-        relationshipTabs.getTabs().add(new Tab("Parents", buildParentsTabContent()));
-        relationshipTabs.getTabs().add(new Tab("Children", buildChildrenTabContent()));
-        relationshipTabs.getTabs().add(new Tab("Spouses", buildSpousesTabContent()));
-        relationshipTabs.getTabs().forEach(tab -> tab.setClosable(false));
+        SplitPane treesSplit = new SplitPane(
+                buildTreePane("Ancestry", pedigreeTree),
+                buildTreePane("Descendancy", descendancyTree)
+        );
+        treesSplit.getStyleClass().add("workspace-split");
+        treesSplit.setDividerPositions(0.50);
 
-        SplitPane splitPane = new SplitPane(peopleNavigatorPane.getContent(), relationshipTabs);
-        splitPane.setDividerPositions(0.60);
+        SplitPane leftSplit = new SplitPane(peopleNavigatorPane.getContent(), treesSplit);
+        leftSplit.setOrientation(Orientation.VERTICAL);
+        leftSplit.getStyleClass().add("workspace-split");
+        leftSplit.setDividerPositions(0.34);
 
-        setCenter(splitPane);
-        setBottom(statusLabel);
+        HBox selectedPersonHeader = buildSelectedPersonHeader();
+        VBox workspacePane = new VBox(8, selectedPersonHeader, workspaceTabs);
+        workspacePane.getStyleClass().add("workspace-shell");
+        VBox.setVgrow(workspaceTabs, Priority.ALWAYS);
+
+        SplitPane mainSplit = new SplitPane(leftSplit, workspacePane);
+        mainSplit.getStyleClass().add("workspace-split");
+        mainSplit.setDividerPositions(0.42);
+
+        shortcutsHelpButton.setFocusTraversable(false);
+        shortcutsHelpButton.setMinSize(28, 28);
+        shortcutsHelpButton.setPrefSize(28, 28);
+        shortcutsHelpButton.setOnAction(event -> showShortcutsDialog());
+        shortcutsHelpButton.getStyleClass().addAll("icon-button", "utility-button");
+
+        configureDataActionsComboBox();
+
+        Region bottomSpacer = new Region();
+        HBox.setHgrow(bottomSpacer, Priority.ALWAYS);
+        HBox bottomBar = new HBox(8, statusLabel, bottomSpacer, dataActionsComboBox, shortcutsHelpButton);
+        bottomBar.getStyleClass().add("status-bar");
+        statusLabel.getStyleClass().add("status-text");
+
+        setCenter(mainSplit);
+        setBottom(bottomBar);
+    }
+
+    private HBox buildSelectedPersonHeader() {
+        Label selectedPrefix = new Label("Selected");
+        selectedPrefix.getStyleClass().add("selected-person-prefix");
+
+        HBox header = new HBox(10, selectedPrefix, selectedPersonNameLabel, selectedPersonFsPidLabel);
+        header.getStyleClass().add("selected-person-strip");
+        return header;
     }
 
     private VBox buildWorkQueueTabContent() {
@@ -272,10 +329,53 @@ public class MainView extends BorderPane {
                 new Label("Bucket"),
                 workQueueBucketFilterCombo
         );
+        toolbar.getStyleClass().add("section-toolbar");
 
         VBox box = new VBox(8, toolbar, workQueueTable);
         box.setPadding(new Insets(10));
+        box.getStyleClass().add("panel-surface");
+        workQueueTable.getStyleClass().add("compact-table");
         return box;
+    }
+
+    private void configureDataActionsComboBox() {
+        dataActionsComboBox.getItems().setAll(
+                DATA_ACTIONS_PLACEHOLDER,
+                "Reload Data",
+                "Export Backup",
+                "Import Backup"
+        );
+        dataActionsComboBox.setValue(DATA_ACTIONS_PLACEHOLDER);
+        dataActionsComboBox.setPrefWidth(150);
+        dataActionsComboBox.setVisibleRowCount(4);
+        dataActionsComboBox.setFocusTraversable(false);
+        dataActionsComboBox.getStyleClass().add("utility-combo");
+        dataActionsComboBox.valueProperty().addListener((obs, oldValue, newValue) -> {
+            if (resettingDataActionsComboBox || newValue == null || DATA_ACTIONS_PLACEHOLDER.equals(newValue)) {
+                return;
+            }
+
+            try {
+                switch (newValue) {
+                    case "Reload Data" -> refreshPeople();
+                    case "Export Backup" -> exportBackup();
+                    case "Import Backup" -> importBackup();
+                    default -> {
+                    }
+                }
+            } finally {
+                resetDataActionsComboBox();
+            }
+        });
+    }
+
+    private void resetDataActionsComboBox() {
+        resettingDataActionsComboBox = true;
+        try {
+            dataActionsComboBox.setValue(DATA_ACTIONS_PLACEHOLDER);
+        } finally {
+            resettingDataActionsComboBox = false;
+        }
     }
 
     private void exportBackup() {
@@ -344,6 +444,12 @@ public class MainView extends BorderPane {
         return getScene() == null ? null : getScene().getWindow();
     }
 
+    private String getThemeStylesheet() {
+        return MainView.class
+                .getResource("/family/balling/descendencytracker/ui/app-theme.css")
+                .toExternalForm();
+    }
+
     private void showInfo(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle(title);
@@ -361,20 +467,59 @@ public class MainView extends BorderPane {
     }
 
     private void handleSelectedPersonChanged(Person newSelection) {
-        updateSummaryCard(newSelection);
-        updateDetailArea(newSelection);
-        refreshRelationshipTables(newSelection);
-        refreshAncestorLineTable(newSelection);
-        refreshReportsTable(newSelection);
-        refreshPedigreeTree(newSelection);
-        refreshDescendancyTree(newSelection);
-        updateOrdinanceEditor(newSelection);
-        refreshEligibilityTable(newSelection);
+        applySelectedPersonToWorkspace(newSelection);
+    }
+
+    private void applySelectedPersonToWorkspace(Person newSelection) {
+        if (personDetailsStage != null && personDetailsStage.isShowing()) {
+            updateSummaryCard(newSelection);
+            updateDetailArea(newSelection);
+        }
+        updateSelectedPersonHeader(newSelection);
+        scheduleAncestorLinesWarmup(newSelection);
+        scheduleOrdinancesWarmup(newSelection);
+        refreshVisibleWorkspaceTab(newSelection);
+        Person currentRoot = getCurrentRootPerson();
+        refreshTreesIfRootChanged(currentRoot);
         updateStatus();
     }
 
+    private void setCurrentRootPerson(Person person) {
+        if (person == null || person.getPersonId() == null) {
+            return;
+        }
+
+        try {
+            personService.setRootPerson(person.getPersonId());
+            markCurrentRootLocally(person.getPersonId());
+            applySelectedPersonToWorkspace(person);
+        } catch (Exception ex) {
+            showError("Could not update the current root person.", ex);
+        }
+    }
+
+    private Person getCurrentRootPerson() {
+        for (Person candidate : allPeople) {
+            if (candidate.isRoot()) {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private void markCurrentRootLocally(long rootPersonId) {
+        for (Person candidate : allPeople) {
+            if (candidate.getPersonId() == null) {
+                continue;
+            }
+            candidate.setRoot(candidate.getPersonId() == rootPersonId);
+        }
+
+        personTable.refresh();
+    }
+
     private void handleSelectedAncestorLineChanged(AncestorLineSummary newSelection) {
-        ancestorLinesPane.loadStewardship(newSelection);
         refreshLineWorkbench(newSelection);
     }
 
@@ -399,33 +544,10 @@ public class MainView extends BorderPane {
         workQueueBucketFilterCombo.valueProperty().addListener((obs, oldValue, newValue) -> applyWorkQueueFilter());
     }
 
-    private void configureReportControls() {
-        reportSearchField.setPromptText("Search reports...");
-        reportSearchField.setPrefWidth(260);
-        reportSearchField.textProperty().addListener((obs, oldValue, newValue) -> applyReportFilter());
-
-        reportTypeFilterCombo.getItems().setAll(
-                "All Reports",
-                "Open Now Report",
-                "Opening Soon Report",
-                "Waiting on 110 Report",
-                "Unresolved Data Report",
-                "Complete For Now Report",
-                "Not Reviewed Report"
-        );
-        reportTypeFilterCombo.setValue("All Reports");
-        reportTypeFilterCombo.valueProperty().addListener((obs, oldValue, newValue) -> applyReportFilter());
-    }
-
     private void clearWorkQueueFilters() {
         workQueueSearchField.clear();
         workQueueActionableOnlyCheckBox.setSelected(false);
         workQueueBucketFilterCombo.setValue("All");
-    }
-
-    private void clearReportFilters() {
-        reportSearchField.clear();
-        reportTypeFilterCombo.setValue("All Reports");
     }
 
     private void applyWorkQueueFilter() {
@@ -459,45 +581,8 @@ public class MainView extends BorderPane {
         });
     }
 
-    private void applyReportFilter() {
-        String searchText = reportSearchField.getText() == null ? "" : reportSearchField.getText().trim().toLowerCase();
-        String reportType = reportTypeFilterCombo.getValue();
-
-        filteredReportRows.setPredicate(row -> {
-            if (row == null) {
-                return false;
-            }
-
-            if (reportType != null && !"All Reports".equals(reportType) && !matchesReportType(row, reportType)) {
-                return false;
-            }
-
-            if (searchText.isBlank()) {
-                return true;
-            }
-
-            return containsIgnoreCase(row.getAncestorDisplayName(), searchText)
-                    || containsIgnoreCase(row.getSummaryReason(), searchText)
-                    || containsIgnoreCase(row.getStewardshipNotes(), searchText)
-                    || (row.getStewardshipStatus() != null && row.getStewardshipStatus().name().toLowerCase().contains(searchText))
-                    || (row.getBadgeStatus() != null && row.getBadgeStatus().name().toLowerCase().contains(searchText));
-        });
-    }
-
     private boolean containsIgnoreCase(String value, String searchTextLower) {
         return value != null && value.toLowerCase().contains(searchTextLower);
-    }
-
-    private boolean matchesReportType(AncestorLineSummary row, String reportType) {
-        return switch (reportType) {
-            case "Open Now Report" -> row.getOpenCount() > 0;
-            case "Opening Soon Report" -> row.getOpeningSoonCount() > 0;
-            case "Waiting on 110 Report" -> row.getWaiting110Count() > 0;
-            case "Unresolved Data Report" -> row.getUnresolvedCount() > 0;
-            case "Complete For Now Report" -> row.getBadgeStatus() != null && row.getBadgeStatus().name().equals("COMPLETE_FOR_NOW");
-            case "Not Reviewed Report" -> row.getBadgeStatus() != null && row.getBadgeStatus().name().equals("NOT_REVIEWED");
-            default -> true;
-        };
     }
 
     private TitledPane buildSummaryPane() {
@@ -525,8 +610,9 @@ public class MainView extends BorderPane {
         grid.add(new Label("Descendants"), 2, row);
         grid.add(summaryDescendantsValue, 3, row++);
 
-        grid.add(new Label("Line Badge"), 0, row);
-        grid.add(summaryLineBadgeValue, 1, row);
+        HBox lineStatusLabelRow = new HBox(6, new Label("Line Status"), buildLineStatusHelpButton());
+        grid.add(lineStatusLabelRow, 0, row);
+        grid.add(summaryLineStatusValue, 1, row);
         grid.add(new Label("Next Available"), 2, row);
         grid.add(summaryLineNextAvailableValue, 3, row++);
 
@@ -541,63 +627,191 @@ public class MainView extends BorderPane {
         grid.add(summaryLineUnresolvedValue, 3, row++);
 
         grid.add(new Label("Complete"), 0, row);
-        grid.add(summaryLineCompleteValue, 1, row);
-        grid.add(new Label("Stewardship"), 2, row);
-        grid.add(summaryLineStewardshipValue, 3, row++);
+        grid.add(summaryLineCompleteValue, 1, row++);
 
         grid.add(new Label("Line Reason"), 0, row);
         grid.add(summaryLineReasonValue, 1, row, 3, 1);
 
         TitledPane titledPane = new TitledPane("Quick Summary", grid);
+        titledPane.getStyleClass().add("section-pane");
         titledPane.setCollapsible(true);
         titledPane.setExpanded(false);
         return titledPane;
     }
 
-    private VBox buildEligibilityTabContent() {
-        Button refreshButton = new Button("Refresh Eligibility");
-        Button copySuggestedButton = new Button("Copy Suggested Person Buckets");
+    private TitledPane buildRelationshipPane() {
+        Label helpLabel = new Label("Selection updates the workspace. Use Ctrl+R or right-click Set As Root to reroot.");
+        helpLabel.setWrapText(true);
+        helpLabel.getStyleClass().add("muted-text");
 
-        refreshButton.setOnAction(event -> refreshEligibilityTable(personTable.getSelectionModel().getSelectedItem()));
-        copySuggestedButton.setOnAction(event -> copySuggestedPersonBucketsToOrdinanceEditor());
+        VBox box = new VBox(
+                6,
+                new HBox(8, new Label("Relationship To Root"), relationshipToRootValue),
+                helpLabel
+        );
+        box.setPadding(new Insets(8));
+        box.getStyleClass().add("detail-card");
 
-        ToolBar toolbar = new ToolBar(refreshButton, copySuggestedButton);
+        TitledPane titledPane = new TitledPane("Root Context", box);
+        titledPane.getStyleClass().add("section-pane");
+        titledPane.setCollapsible(false);
+        return titledPane;
+    }
 
-        VBox box = new VBox(8, toolbar, eligibilityTable);
-        box.setPadding(new Insets(10));
-        return box;
+    private Button buildLineStatusHelpButton() {
+        Button button = new Button("?");
+        button.setFocusTraversable(false);
+        button.setMinSize(24, 24);
+        button.getStyleClass().addAll("icon-button", "utility-button");
+        button.setOnAction(event -> showLineStatusHelp());
+        return button;
+    }
+
+    private VBox buildTreePane(String title, TreeView<TreePersonNode> treeView) {
+        VBox box = new VBox(treeView);
+        box.setPadding(new Insets(6));
+        box.getStyleClass().add("panel-surface");
+        VBox.setVgrow(treeView, Priority.ALWAYS);
+        treeView.getStyleClass().add("compact-tree");
+
+        TitledPane titledPane = new TitledPane(title, box);
+        titledPane.getStyleClass().add("section-pane");
+        titledPane.setCollapsible(true);
+        titledPane.setExpanded(true);
+        titledPane.setTooltip(new Tooltip("Single-click selects. Right-click or Ctrl+R sets the current root."));
+
+        VBox container = new VBox(titledPane);
+        VBox.setVgrow(titledPane, Priority.ALWAYS);
+        return container;
+    }
+
+    private void buildPersonDetailsStage() {
+        TitledPane summaryPane = buildSummaryPane();
+        TitledPane relationshipPane = buildRelationshipPane();
+        Label detailHeading = new Label("Person Details");
+        detailHeading.getStyleClass().add("section-title");
+
+        VBox detailPane = new VBox(
+                8,
+                summaryPane,
+                relationshipPane,
+                detailHeading,
+                detailArea
+        );
+        detailPane.setPadding(new Insets(10));
+        detailPane.getStyleClass().addAll("app-root", "dialog-surface");
+        detailArea.getStyleClass().add("details-area");
+        VBox.setVgrow(detailArea, Priority.ALWAYS);
+
+        personDetailsStage = new Stage();
+        personDetailsStage.initModality(Modality.NONE);
+        personDetailsStage.setTitle("Person Details");
+        javafx.scene.Scene scene = new javafx.scene.Scene(detailPane, 520, 720);
+        scene.getStylesheets().add(getThemeStylesheet());
+        personDetailsStage.setScene(scene);
+    }
+
+    private void showPersonDetailsDialog() {
+        if (personDetailsStage == null) {
+            buildPersonDetailsStage();
+        }
+
+        if (getScene() != null && getScene().getWindow() != null && personDetailsStage.getOwner() == null) {
+            personDetailsStage.initOwner(getScene().getWindow());
+        }
+
+        Person selected = getSelectedPerson();
+        updateSummaryCard(selected);
+        updateDetailArea(selected);
+        personDetailsStage.show();
+        personDetailsStage.toFront();
+        personDetailsStage.requestFocus();
+    }
+
+    private void hidePersonDetailsDialog() {
+        if (personDetailsStage != null && personDetailsStage.isShowing()) {
+            personDetailsStage.hide();
+        }
+    }
+
+    private void buildShortcutsStage() {
+        Label shortcutsLabel = new Label("""
+                Keyboard Shortcuts
+
+                Ctrl+R  Set the selected person as the current root
+                Ctrl+D  Show the person details window
+                Ctrl+H  Hide the person details window
+                Ctrl+E  Edit the selected person, or the root if none is selected
+                Ctrl+Delete  Delete the selected person after confirmation
+                """);
+        shortcutsLabel.setWrapText(true);
+        shortcutsLabel.getStyleClass().add("dialog-text");
+
+        VBox content = new VBox(10, shortcutsLabel);
+        content.setPadding(new Insets(12));
+        content.getStyleClass().addAll("app-root", "dialog-surface");
+
+        shortcutsStage = new Stage();
+        shortcutsStage.initModality(Modality.NONE);
+        shortcutsStage.setTitle("Keyboard Shortcuts");
+        javafx.scene.Scene scene = new javafx.scene.Scene(content, 420, 220);
+        scene.getStylesheets().add(getThemeStylesheet());
+        shortcutsStage.setScene(scene);
+    }
+
+    private void showShortcutsDialog() {
+        if (shortcutsStage == null) {
+            buildShortcutsStage();
+        }
+
+        if (getScene() != null && getScene().getWindow() != null && shortcutsStage.getOwner() == null) {
+            shortcutsStage.initOwner(getScene().getWindow());
+        }
+
+        shortcutsStage.show();
+        shortcutsStage.toFront();
+        shortcutsStage.requestFocus();
+    }
+
+    private void showLineStatusHelp() {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Line Status");
+        alert.setHeaderText("Line status meanings");
+        alert.setContentText(
+                "OPEN_NOW: at least one tracked item in the line is actionable now.\n\n" +
+                "OPENING_SOON: items in the line are expected to open soon.\n\n" +
+                "WAITING_110: the line is mainly waiting on the 110-year rule.\n\n" +
+                "UNRESOLVED: more information is needed before eligibility can be determined.\n\n" +
+                "NOT_REVIEWED: one or more people in the line still need review.\n\n" +
+                "COMPLETE_FOR_NOW: nothing in the line needs immediate attention."
+        );
+        alert.showAndWait();
     }
 
     private VBox buildOrdinancesTabContent() {
-        return ordinancePane.getContent();
+        Button refreshEligibilityButton = new Button("Refresh Eligibility");
+        Button copySuggestedButton = new Button("Copy Suggested Person Buckets");
+
+        refreshEligibilityButton.setOnAction(event -> refreshEligibilityTable(personTable.getSelectionModel().getSelectedItem()));
+        copySuggestedButton.setOnAction(event -> copySuggestedPersonBucketsToOrdinanceEditor());
+
+        ToolBar eligibilityToolbar = new ToolBar(refreshEligibilityButton, copySuggestedButton);
+        eligibilityToolbar.getStyleClass().add("section-toolbar");
+        VBox eligibilityBox = new VBox(8, eligibilityToolbar, eligibilityTable);
+        eligibilityBox.getStyleClass().add("section-body");
+        TitledPane eligibilityPane = new TitledPane("Eligibility", eligibilityBox);
+        eligibilityPane.getStyleClass().add("section-pane");
+        eligibilityPane.setCollapsible(false);
+        eligibilityTable.getStyleClass().add("compact-table");
+
+        VBox box = new VBox(8, ordinancePane.getContent(), eligibilityPane);
+        box.setPadding(new Insets(10));
+        box.getStyleClass().add("panel-surface");
+        return box;
     }
 
     private VBox buildAncestorLinesTabContent() {
         return ancestorLinesPane.getContent();
-    }
-
-    private VBox buildReportsTabContent() {
-        Button openSelectedButton = new Button("Open Selected Ancestor");
-        Button refreshButton = new Button("Refresh Reports");
-        Button clearFiltersButton = new Button("Clear Report Filters");
-
-        openSelectedButton.setOnAction(event -> openSelectedReportAncestor());
-        refreshButton.setOnAction(event -> refreshReportsTable(personTable.getSelectionModel().getSelectedItem()));
-        clearFiltersButton.setOnAction(event -> clearReportFilters());
-
-        ToolBar toolbar = new ToolBar(
-                openSelectedButton,
-                refreshButton,
-                new Label("Report"),
-                reportTypeFilterCombo,
-                new Label("Find"),
-                reportSearchField,
-                clearFiltersButton
-        );
-
-        VBox box = new VBox(8, toolbar, reportsTable);
-        box.setPadding(new Insets(10));
-        return box;
     }
 
     private VBox buildPedigreeTabContent() {
@@ -632,7 +846,26 @@ public class MainView extends BorderPane {
         return box;
     }
 
-    private VBox buildParentsTabContent() {
+    private VBox buildFamilyTabContent() {
+        TitledPane parentsPane = new TitledPane("Parents", buildParentsSection());
+        parentsPane.getStyleClass().add("section-pane");
+        parentsPane.setCollapsible(false);
+
+        TitledPane childrenPane = new TitledPane("Children", buildChildrenSection());
+        childrenPane.getStyleClass().add("section-pane");
+        childrenPane.setCollapsible(false);
+
+        TitledPane spousesPane = new TitledPane("Spouses", buildSpousesSection());
+        spousesPane.getStyleClass().add("section-pane");
+        spousesPane.setCollapsible(false);
+
+        VBox box = new VBox(8, parentsPane, childrenPane, spousesPane);
+        box.setPadding(new Insets(10));
+        box.getStyleClass().add("panel-surface");
+        return box;
+    }
+
+    private VBox buildParentsSection() {
         Button addParentButton = new Button("Add Parent");
         Button editParentButton = new Button("Edit Parent Link");
         Button removeParentButton = new Button("Remove Parent Link");
@@ -642,13 +875,14 @@ public class MainView extends BorderPane {
         removeParentButton.setOnAction(event -> removeSelectedParentLink());
 
         ToolBar toolbar = new ToolBar(addParentButton, editParentButton, removeParentButton);
-
+        toolbar.getStyleClass().add("section-toolbar");
+        parentsTable.getStyleClass().add("compact-table");
         VBox box = new VBox(8, toolbar, parentsTable);
-        box.setPadding(new Insets(10));
+        box.getStyleClass().add("section-body");
         return box;
     }
 
-    private VBox buildChildrenTabContent() {
+    private VBox buildChildrenSection() {
         Button addChildButton = new Button("Add Child");
         Button editChildButton = new Button("Edit Child Link");
         Button removeChildButton = new Button("Remove Child Link");
@@ -658,13 +892,14 @@ public class MainView extends BorderPane {
         removeChildButton.setOnAction(event -> removeSelectedChildLink());
 
         ToolBar toolbar = new ToolBar(addChildButton, editChildButton, removeChildButton);
-
+        toolbar.getStyleClass().add("section-toolbar");
+        childrenTable.getStyleClass().add("compact-table");
         VBox box = new VBox(8, toolbar, childrenTable);
-        box.setPadding(new Insets(10));
+        box.getStyleClass().add("section-body");
         return box;
     }
 
-    private VBox buildSpousesTabContent() {
+    private VBox buildSpousesSection() {
         Button addSpouseButton = new Button("Add Spouse");
         Button editSpouseButton = new Button("Edit Spouse Link");
         Button removeSpouseButton = new Button("Remove Spouse Link");
@@ -674,9 +909,10 @@ public class MainView extends BorderPane {
         removeSpouseButton.setOnAction(event -> removeSelectedSpouseLink());
 
         ToolBar toolbar = new ToolBar(addSpouseButton, editSpouseButton, removeSpouseButton);
-
+        toolbar.getStyleClass().add("section-toolbar");
+        spousesTable.getStyleClass().add("compact-table");
         VBox box = new VBox(8, toolbar, spousesTable);
-        box.setPadding(new Insets(10));
+        box.getStyleClass().add("section-body");
         return box;
     }
 
@@ -722,6 +958,8 @@ public class MainView extends BorderPane {
                 suggestedColumn,
                 reasonColumn
         );
+        eligibilityTable.setPlaceholder(new Label("No eligibility rows."));
+        eligibilityTable.setFixedCellSize(23);
     }
 
     private void configureWorkQueueTable() {
@@ -785,82 +1023,14 @@ public class MainView extends BorderPane {
                 spousesColumn,
                 reasonColumn
         );
+        workQueueTable.setPlaceholder(new Label("No work queue items."));
+        workQueueTable.setFixedCellSize(23);
 
         workQueueTable.setRowFactory(table -> {
             TableRow<WorkQueueRow> row = new TableRow<>();
             row.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && !row.isEmpty()) {
                     openSelectedWorkQueuePerson();
-                }
-            });
-            return row;
-        });
-    }
-
-    private void configureReportsTable() {
-        TableColumn<AncestorLineSummary, String> ancestorColumn = new TableColumn<>("Ancestor");
-        ancestorColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getAncestorDisplayName()))
-        );
-        ancestorColumn.setPrefWidth(220);
-
-        TableColumn<AncestorLineSummary, String> stewardshipColumn = new TableColumn<>("Stewardship");
-        stewardshipColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(data.getValue().getStewardshipStatus() == null ? "" : data.getValue().getStewardshipStatus().name())
-        );
-        stewardshipColumn.setPrefWidth(150);
-
-        TableColumn<AncestorLineSummary, String> badgeColumn = new TableColumn<>("Badge");
-        badgeColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(data.getValue().getBadgeStatus() == null ? "" : data.getValue().getBadgeStatus().name())
-        );
-        badgeColumn.setPrefWidth(130);
-
-        TableColumn<AncestorLineSummary, String> openColumn = new TableColumn<>("Open");
-        openColumn.setCellValueFactory(data -> new ReadOnlyStringWrapper(String.valueOf(data.getValue().getOpenCount())));
-        openColumn.setPrefWidth(70);
-
-        TableColumn<AncestorLineSummary, String> soonColumn = new TableColumn<>("Soon");
-        soonColumn.setCellValueFactory(data -> new ReadOnlyStringWrapper(String.valueOf(data.getValue().getOpeningSoonCount())));
-        soonColumn.setPrefWidth(70);
-
-        TableColumn<AncestorLineSummary, String> waitingColumn = new TableColumn<>("Waiting 110");
-        waitingColumn.setCellValueFactory(data -> new ReadOnlyStringWrapper(String.valueOf(data.getValue().getWaiting110Count())));
-        waitingColumn.setPrefWidth(100);
-
-        TableColumn<AncestorLineSummary, String> unresolvedColumn = new TableColumn<>("Unresolved");
-        unresolvedColumn.setCellValueFactory(data -> new ReadOnlyStringWrapper(String.valueOf(data.getValue().getUnresolvedCount())));
-        unresolvedColumn.setPrefWidth(100);
-
-        TableColumn<AncestorLineSummary, String> nextColumn = new TableColumn<>("Next Available");
-        nextColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(formatSummaryDate(data.getValue().getNextAvailableDate()))
-        );
-        nextColumn.setPrefWidth(130);
-
-        TableColumn<AncestorLineSummary, String> reasonColumn = new TableColumn<>("Reason");
-        reasonColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getSummaryReason()))
-        );
-        reasonColumn.setPrefWidth(430);
-
-        reportsTable.getColumns().addAll(
-                ancestorColumn,
-                stewardshipColumn,
-                badgeColumn,
-                openColumn,
-                soonColumn,
-                waitingColumn,
-                unresolvedColumn,
-                nextColumn,
-                reasonColumn
-        );
-
-        reportsTable.setRowFactory(table -> {
-            TableRow<AncestorLineSummary> row = new TableRow<>();
-            row.setOnMouseClicked(event -> {
-                if (event.getClickCount() == 2 && !row.isEmpty()) {
-                    openSelectedReportAncestor();
                 }
             });
             return row;
@@ -897,34 +1067,50 @@ public class MainView extends BorderPane {
         selectPersonInTable(selected.personId());
     }
 
-    private void openSelectedReportAncestor() {
-        AncestorLineSummary selected = reportsTable.getSelectionModel().getSelectedItem();
-        if (selected == null || selected.getAncestorPersonId() == null) {
-            showWarning("Please select a report row.");
-            return;
-        }
-
-        selectPersonInTable(selected.getAncestorPersonId());
-    }
-
     private void configurePedigreeTree() {
         pedigreeTree.setShowRoot(true);
-        pedigreeTree.setRoot(new TreeItem<>(new TreePersonNode(-1L, "Select a person to view pedigree.")));
-        pedigreeTree.setOnMouseClicked(event -> {
-            if (event.getClickCount() == 2) {
-                openSelectedPersonFromTree(pedigreeTree);
+        pedigreeTree.setRoot(new TreeItem<>(TreePersonNode.placeholder("Select a root person to view ancestry.")));
+        pedigreeTree.setFixedCellSize(24);
+        pedigreeTree.setCellFactory(tree -> createTreeCell());
+        attachTreeContextMenu(pedigreeTree);
+        pedigreeTree.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
+            if (!syncingTreeSelection) {
+                handleTreeSelectionChanged(newSelection);
             }
         });
     }
 
     private void configureDescendancyTree() {
         descendancyTree.setShowRoot(true);
-        descendancyTree.setRoot(new TreeItem<>(new TreePersonNode(-1L, "Select a person to view descendancy.")));
-        descendancyTree.setOnMouseClicked(event -> {
-            if (event.getClickCount() == 2) {
-                openSelectedPersonFromTree(descendancyTree);
+        descendancyTree.setRoot(new TreeItem<>(TreePersonNode.placeholder("Select a root person to view descendancy.")));
+        descendancyTree.setFixedCellSize(24);
+        descendancyTree.setCellFactory(tree -> createTreeCell());
+        attachTreeContextMenu(descendancyTree);
+        descendancyTree.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
+            if (!syncingTreeSelection) {
+                handleTreeSelectionChanged(newSelection);
             }
         });
+    }
+
+    private void attachTreeContextMenu(TreeView<TreePersonNode> treeView) {
+        MenuItem editPersonItem = new MenuItem("Edit Person");
+        editPersonItem.setOnAction(event -> editSelectedOrRootPerson());
+        MenuItem personDetailsItem = new MenuItem("Person Details");
+        personDetailsItem.setOnAction(event -> showPersonDetailsDialog());
+        MenuItem setRootItem = new MenuItem("Set As Root");
+        setRootItem.setOnAction(event -> {
+            TreeItem<TreePersonNode> selectedItem = treeView.getSelectionModel().getSelectedItem();
+            if (selectedItem == null || selectedItem.getValue() == null || selectedItem.getValue().personId() <= 0) {
+                return;
+            }
+
+            Person person = findPersonById(selectedItem.getValue().personId());
+            if (person != null) {
+                setCurrentRootPerson(person);
+            }
+        });
+        treeView.setContextMenu(new ContextMenu(editPersonItem, personDetailsItem, setRootItem));
     }
 
     private void configurePersonTable() {
@@ -1032,12 +1218,14 @@ public class MainView extends BorderPane {
         notesColumn.setPrefWidth(300);
 
         parentsTable.getColumns().addAll(parentColumn, orderColumn, notesColumn);
+        parentsTable.setPlaceholder(new Label("No parents linked."));
+        parentsTable.setFixedCellSize(23);
 
         parentsTable.setRowFactory(table -> {
             TableRow<ParentChildLink> row = new TableRow<>();
             row.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && !row.isEmpty()) {
-                    editSelectedParentLink();
+                    openSelectedParentPerson();
                 }
             });
             return row;
@@ -1064,12 +1252,14 @@ public class MainView extends BorderPane {
         notesColumn.setPrefWidth(300);
 
         childrenTable.getColumns().addAll(childColumn, orderColumn, notesColumn);
+        childrenTable.setPlaceholder(new Label("No children linked."));
+        childrenTable.setFixedCellSize(23);
 
         childrenTable.setRowFactory(table -> {
             TableRow<ParentChildLink> row = new TableRow<>();
             row.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && !row.isEmpty()) {
-                    editSelectedChildLink();
+                    openSelectedChildPerson();
                 }
             });
             return row;
@@ -1132,21 +1322,63 @@ public class MainView extends BorderPane {
                 sealingDateColumn,
                 notesColumn
         );
+        spousesTable.setPlaceholder(new Label("No spouses linked."));
+        spousesTable.setFixedCellSize(23);
 
         spousesTable.setRowFactory(table -> {
             TableRow<SpouseLink> row = new TableRow<>();
             row.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && !row.isEmpty()) {
-                    editSelectedSpouseLink();
+                    openSelectedSpousePerson();
                 }
             });
             return row;
         });
     }
 
+    private void openSelectedParentPerson() {
+        ParentChildLink selected = parentsTable.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.getParentPersonId() == null) {
+            showWarning("Please select a parent link.");
+            return;
+        }
+
+        selectPersonInTable(selected.getParentPersonId());
+    }
+
+    private void openSelectedChildPerson() {
+        ParentChildLink selected = childrenTable.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.getChildPersonId() == null) {
+            showWarning("Please select a child link.");
+            return;
+        }
+
+        selectPersonInTable(selected.getChildPersonId());
+    }
+
+    private void openSelectedSpousePerson() {
+        Person current = personTable.getSelectionModel().getSelectedItem();
+        SpouseLink selected = spousesTable.getSelectionModel().getSelectedItem();
+        if (current == null || selected == null) {
+            showWarning("Please select a spouse link.");
+            return;
+        }
+
+        Long spousePersonId = selected.getOtherPersonId(current.getPersonId());
+        if (spousePersonId == null) {
+            showWarning("That spouse could not be opened.");
+            return;
+        }
+
+        selectPersonInTable(spousePersonId);
+    }
+
     private void refreshPeople() {
         try {
             ancestorSummaryCache.clear();
+            ancestorSummariesByPersonIdCache.clear();
+            ordinanceTabDataByPersonIdCache.clear();
+            renderedTreeRootPersonId = null;
             Long selectedPersonId = null;
             Person currentlySelected = personTable.getSelectionModel().getSelectedItem();
             if (currentlySelected != null) {
@@ -1159,6 +1391,10 @@ public class MainView extends BorderPane {
 
             if (selectedPersonId != null) {
                 reselectPerson(selectedPersonId);
+            } else {
+                personService.getRootPerson()
+                        .map(Person::getPersonId)
+                        .ifPresent(this::reselectPerson);
             }
 
             if (personTable.getSelectionModel().getSelectedItem() == null && !personTable.getItems().isEmpty()) {
@@ -1171,15 +1407,12 @@ public class MainView extends BorderPane {
             if (selected == null) {
                 clearSelectionDependentViews();
             } else {
-                updateSummaryCard(selected);
-                updateDetailArea(selected);
-                refreshRelationshipTables(selected);
-                refreshAncestorLineTable(selected);
-                refreshReportsTable(selected);
-                refreshPedigreeTree(selected);
-                refreshDescendancyTree(selected);
-                updateOrdinanceEditor(selected);
-                refreshEligibilityTable(selected);
+                if (personDetailsStage != null && personDetailsStage.isShowing()) {
+                    updateSummaryCard(selected);
+                    updateDetailArea(selected);
+                }
+                refreshVisibleWorkspaceTab(selected);
+                refreshTreesIfRootChanged(getCurrentRootPerson());
             }
         } catch (Exception ex) {
             showError("Could not refresh people.", ex);
@@ -1195,6 +1428,98 @@ public class MainView extends BorderPane {
         }
     }
 
+    private void refreshVisibleWorkspaceTab(Person person) {
+        Tab selectedTab = workspaceTabs.getSelectionModel().getSelectedItem();
+        if (selectedTab == null) {
+            return;
+        }
+
+        switch (selectedTab.getText()) {
+            case "Ordinances" -> {
+                ordinancesWarmupDelay.stop();
+                updateOrdinanceEditor(person);
+                refreshEligibilityTable(person);
+            }
+            case "Ancestor Lines" -> {
+                ancestorLinesWarmupDelay.stop();
+                refreshAncestorLineTable(person);
+            }
+            case "Family" -> refreshRelationshipTables(person);
+            default -> {
+            }
+        }
+    }
+
+    private void scheduleAncestorLinesWarmup(Person person) {
+        ancestorLinesWarmupDelay.stop();
+        if (person == null || person.getPersonId() == null) {
+            return;
+        }
+
+        Tab selectedTab = workspaceTabs.getSelectionModel().getSelectedItem();
+        if (selectedTab != null && "Ancestor Lines".equals(selectedTab.getText())) {
+            return;
+        }
+
+        if (ancestorSummariesByPersonIdCache.containsKey(person.getPersonId())) {
+            return;
+        }
+
+        ancestorLinesWarmupDelay.playFromStart();
+    }
+
+    private void warmAncestorLinesForCurrentSelection() {
+        Person selected = getSelectedPerson();
+        if (selected == null || selected.getPersonId() == null) {
+            return;
+        }
+
+        if (ancestorSummariesByPersonIdCache.containsKey(selected.getPersonId())) {
+            return;
+        }
+
+        try {
+            getAncestorSummariesForPerson(selected);
+        } catch (Exception ex) {
+            showError("Could not warm ancestor lines.", ex);
+        }
+    }
+
+    private void scheduleOrdinancesWarmup(Person person) {
+        ordinancesWarmupDelay.stop();
+        if (person == null || person.getPersonId() == null) {
+            return;
+        }
+
+        Tab selectedTab = workspaceTabs.getSelectionModel().getSelectedItem();
+        if (selectedTab != null && "Ordinances".equals(selectedTab.getText())) {
+            return;
+        }
+
+        if (ordinanceTabDataByPersonIdCache.containsKey(person.getPersonId())) {
+            return;
+        }
+
+        ordinancesWarmupDelay.playFromStart();
+    }
+
+    private void warmOrdinancesForCurrentSelection() {
+        Person selected = getSelectedPerson();
+        if (selected == null || selected.getPersonId() == null) {
+            return;
+        }
+
+        if (ordinanceTabDataByPersonIdCache.containsKey(selected.getPersonId())) {
+            return;
+        }
+
+        try {
+            getOrdinanceTabData(selected);
+        } catch (Exception ex) {
+            showError("Could not warm ordinances.", ex);
+        }
+    }
+
     private void refreshAncestorLineTable(Person person) {
         if (person == null) {
             ancestorLinesPane.clearAncestorLines();
@@ -1203,15 +1528,13 @@ public class MainView extends BorderPane {
 
         try {
             Long selectedAncestorId = getSelectedAncestorLinePersonId();
-            List<AncestorLineSummary> summaries = ancestorLineSummaryService.buildSummaries(collectAncestorsForPerson(person), allPeople);
-            applyLineStewardship(summaries);
+            List<AncestorLineSummary> summaries = getAncestorSummariesForPerson(person);
             ancestorLinesPane.setAncestorLines(summaries);
             if (!reselectAncestorLine(selectedAncestorId)) {
                 ancestorLinesPane.selectFirstAncestorLine();
             }
             if (ancestorLinesPane.getSelectedAncestorLine() == null) {
                 ancestorLinesPane.clearWorkbench();
-                ancestorLinesPane.loadStewardship(null);
             }
         } catch (Exception ex) {
             showError("Could not refresh ancestor lines.", ex);
@@ -1302,23 +1625,6 @@ public class MainView extends BorderPane {
         }
     }
 
-    private void refreshReportsTable(Person person) {
-        if (person == null) {
-            allReportRows.clear();
-            applyReportFilter();
-            return;
-        }
-
-        try {
-            List<AncestorLineSummary> summaries = ancestorLineSummaryService.buildSummaries(collectAncestorsForPerson(person), allPeople);
-            applyLineStewardship(summaries);
-            allReportRows.setAll(summaries);
-            applyReportFilter();
-        } catch (Exception ex) {
-            showError("Could not refresh reports.", ex);
-        }
-    }
-
     private void refreshRelationshipTables(Person person) {
         if (person == null) {
             parentsTable.setItems(FXCollections.observableArrayList());
@@ -1349,19 +1655,7 @@ public class MainView extends BorderPane {
         }
 
         try {
-            PersonOrdinanceStatus ordinanceStatus = ordinanceService.getOrCreateForPerson(person.getPersonId());
-            List<ParentChildLink> parents = relationshipService.getParentsForPerson(person.getPersonId());
-            List<SpouseLink> spouses = relationshipService.getSpousesForPerson(person.getPersonId());
-
-            List<OrdinanceEligibilityRow> rows = ordinanceEligibilityService.buildDashboard(
-                    person,
-                    ordinanceStatus,
-                    parents,
-                    spouses,
-                    allPeople
-            );
-
-            eligibilityTable.setItems(FXCollections.observableArrayList(rows));
+            eligibilityTable.setItems(FXCollections.observableArrayList(getOrdinanceTabData(person).eligibilityRows()));
         } catch (Exception ex) {
             showError("Could not refresh eligibility.", ex);
         }
@@ -1412,119 +1706,185 @@ public class MainView extends BorderPane {
 
     private void refreshPedigreeTree(Person person) {
         if (person == null) {
-            pedigreeTree.setRoot(new TreeItem<>(new TreePersonNode(-1L, "Select a person to view pedigree.")));
+            setTreeRoot(pedigreeTree, new TreeItem<>(TreePersonNode.placeholder("Select a root person to view ancestry.")));
             return;
         }
 
-        TreeItem<TreePersonNode> root = buildAncestorBranch(
-                person.getPersonId(),
-                buildTreeLabel(person),
-                new HashSet<>()
-        );
-
-        pedigreeTree.setRoot(root);
-        expandFirstTwoLevels(root);
+        TreeItem<TreePersonNode> root = createPersonTreeItem(person, TreeBranchType.ANCESTRY, Set.of());
+        setTreeRoot(pedigreeTree, root);
     }
 
     private void refreshDescendancyTree(Person person) {
         if (person == null) {
-            descendancyTree.setRoot(new TreeItem<>(new TreePersonNode(-1L, "Select a person to view descendancy.")));
+            setTreeRoot(descendancyTree, new TreeItem<>(TreePersonNode.placeholder("Select a root person to view descendancy.")));
             return;
         }
 
-        TreeItem<TreePersonNode> root = buildDescendantBranch(
-                person.getPersonId(),
-                buildTreeLabel(person),
-                new HashSet<>()
-        );
-
-        descendancyTree.setRoot(root);
-        expandFirstTwoLevels(root);
+        TreeItem<TreePersonNode> root = createPersonTreeItem(person, TreeBranchType.DESCENDANCY, Set.of());
+        setTreeRoot(descendancyTree, root);
     }
 
-    private TreeItem<TreePersonNode> buildAncestorBranch(long personId, String label, Set<Long> path) {
-        TreeItem<TreePersonNode> item = new TreeItem<>(new TreePersonNode(personId, label));
-
-        if (path.contains(personId)) {
-            item.getChildren().add(new TreeItem<>(new TreePersonNode(-1L, "(cycle detected)")));
-            return item;
+    private void refreshTreesIfRootChanged(Person currentRoot) {
+        Long currentRootId = currentRoot == null ? null : currentRoot.getPersonId();
+        if (Objects.equals(renderedTreeRootPersonId, currentRootId)) {
+            return;
         }
 
-        Set<Long> nextPath = new HashSet<>(path);
-        nextPath.add(personId);
+        refreshPedigreeTree(currentRoot);
+        refreshDescendancyTree(currentRoot);
+        renderedTreeRootPersonId = currentRootId;
+    }
 
-        List<ParentChildLink> parents = relationshipService.getParentsForPerson(personId);
-        for (ParentChildLink parentLink : parents) {
-            String parentLabel = buildTreeLabel(parentLink.getParentPersonId(), parentLink.getParentDisplayName());
+    private TreeItem<TreePersonNode> createPersonTreeItem(Person person, TreeBranchType branchType, Set<Long> path) {
+        if (person == null || person.getPersonId() == null) {
+            return new TreeItem<>(TreePersonNode.placeholder("(unknown person)"));
+        }
 
-            TreeItem<TreePersonNode> parentItem = buildAncestorBranch(
-                    parentLink.getParentPersonId(),
-                    parentLabel,
-                    nextPath
-            );
-            item.getChildren().add(parentItem);
+        return createPersonTreeItem(person.getPersonId(), person.getDisplayName(), branchType, path);
+    }
+
+    private TreeItem<TreePersonNode> createPersonTreeItem(long personId, String fallbackName, TreeBranchType branchType, Set<Long> path) {
+        if (path.contains(personId)) {
+            return new TreeItem<>(TreePersonNode.placeholder("(cycle detected)"));
+        }
+
+        Person person = findPersonById(personId);
+        String label = buildCompactTreeLabel(person, fallbackName);
+        Set<Long> currentPath = new HashSet<>(path);
+        currentPath.add(personId);
+
+        TreeItem<TreePersonNode> item = new TreeItem<>(new TreePersonNode(
+                personId,
+                label,
+                branchType,
+                Set.copyOf(currentPath),
+                branchType == TreeBranchType.DESCENDANCY ? resolveDescendantAttentionStatus(person) : DescendantAttentionStatus.NONE
+        ));
+
+        if (hasTreeChildren(personId, branchType)) {
+            item.getChildren().add(new TreeItem<>(TreePersonNode.loading()));
+            item.expandedProperty().addListener((obs, wasExpanded, isExpanded) -> {
+                if (isExpanded) {
+                    ensureTreeChildrenLoaded(item);
+                }
+            });
         }
 
         return item;
     }
 
-    private TreeItem<TreePersonNode> buildDescendantBranch(long personId, String label, Set<Long> path) {
-        TreeItem<TreePersonNode> item = new TreeItem<>(new TreePersonNode(personId, label));
-
-        if (path.contains(personId)) {
-            item.getChildren().add(new TreeItem<>(new TreePersonNode(-1L, "(cycle detected)")));
-            return item;
-        }
-
-        Set<Long> nextPath = new HashSet<>(path);
-        nextPath.add(personId);
-
-        List<ParentChildLink> children = relationshipService.getChildrenForPerson(personId);
-        for (ParentChildLink childLink : children) {
-            String childLabel = buildTreeLabel(childLink.getChildPersonId(), childLink.getChildDisplayName());
-
-            TreeItem<TreePersonNode> childItem = buildDescendantBranch(
-                    childLink.getChildPersonId(),
-                    childLabel,
-                    nextPath
-            );
-            item.getChildren().add(childItem);
-        }
-
-        return item;
-    }
-
-    private void expandFirstTwoLevels(TreeItem<TreePersonNode> root) {
-        if (root == null) {
+    private void ensureTreeChildrenLoaded(TreeItem<TreePersonNode> item) {
+        if (item == null || item.getValue() == null || item.getChildren().isEmpty()) {
             return;
         }
 
-        root.setExpanded(true);
-        for (TreeItem<TreePersonNode> child : root.getChildren()) {
-            child.setExpanded(true);
+        TreeItem<TreePersonNode> firstChild = item.getChildren().get(0);
+        if (firstChild.getValue() == null || !firstChild.getValue().loadingNode()) {
+            return;
+        }
+
+        TreePersonNode node = item.getValue();
+        List<TreeItem<TreePersonNode>> children = switch (node.branchType()) {
+            case ANCESTRY -> relationshipService.getParentsForPerson(node.personId()).stream()
+                    .filter(link -> link.getParentPersonId() != null)
+                    .map(link -> createPersonTreeItem(
+                            link.getParentPersonId(),
+                            link.getParentDisplayName(),
+                            TreeBranchType.ANCESTRY,
+                            node.path()
+                    ))
+                    .sorted(Comparator.comparing(child -> child.getValue().label(), String.CASE_INSENSITIVE_ORDER))
+                    .toList();
+            case DESCENDANCY -> relationshipService.getChildrenForPerson(node.personId()).stream()
+                    .filter(link -> link.getChildPersonId() != null)
+                    .map(link -> createPersonTreeItem(
+                            link.getChildPersonId(),
+                            link.getChildDisplayName(),
+                            TreeBranchType.DESCENDANCY,
+                            node.path()
+                    ))
+                    .sorted(Comparator.comparing(child -> child.getValue().label(), String.CASE_INSENSITIVE_ORDER))
+                    .toList();
+        };
+
+        item.getChildren().setAll(children);
+    }
+
+    private boolean hasTreeChildren(long personId, TreeBranchType branchType) {
+        return switch (branchType) {
+            case ANCESTRY -> !relationshipService.getParentsForPerson(personId).isEmpty();
+            case DESCENDANCY -> !relationshipService.getChildrenForPerson(personId).isEmpty();
+        };
+    }
+
+    private void setTreeRoot(TreeView<TreePersonNode> treeView, TreeItem<TreePersonNode> root) {
+        syncingTreeSelection = true;
+        try {
+            treeView.setRoot(root);
+            if (root != null) {
+                root.setExpanded(true);
+                ensureTreeChildrenLoaded(root);
+                treeView.getSelectionModel().select(root);
+            }
+        } finally {
+            syncingTreeSelection = false;
         }
     }
 
-    private String buildTreeLabel(Person person) {
-        String label = person.getDisplayName();
-        if (person.getFsPid() != null && !person.getFsPid().isBlank()) {
+    private TreeCell<TreePersonNode> createTreeCell() {
+        return new TreeCell<>() {
+            @Override
+            protected void updateItem(TreePersonNode item, boolean empty) {
+                super.updateItem(item, empty);
+
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                    setTextFill(Color.BLACK);
+                    return;
+                }
+
+                setText(item.label());
+                setStyle(isSelected() ? "-fx-font-weight: bold;" : "");
+                setTextFill(isSelected() ? Color.WHITE : resolveTreeTextColor(item));
+            }
+        };
+    }
+
+    private void handleTreeSelectionChanged(TreeItem<TreePersonNode> selectedItem) {
+        if (selectedItem == null || selectedItem.getValue() == null) {
+            return;
+        }
+
+        long personId = selectedItem.getValue().personId();
+        if (personId > 0) {
+            selectPersonInTable(personId);
+        }
+    }
+
+    private Color resolveTreeTextColor(TreePersonNode node) {
+        if (node == null) {
+            return Color.BLACK;
+        }
+
+        return switch (node.attentionStatus()) {
+            case AVAILABLE -> Color.web("#1b7f3a");
+            case POTENTIAL -> Color.web("#a16700");
+            case NEEDS_INFO -> Color.web("#b42318");
+            case COMPLETE, NONE -> Color.web("#1f1f1f");
+        };
+    }
+
+    private String buildCompactTreeLabel(Person person, String fallbackName) {
+        String label = person == null ? nullSafe(fallbackName) : nullSafe(person.getDisplayName());
+        if (label.isBlank()) {
+            label = "(Unnamed Person)";
+        }
+
+        if (person != null && person.getFsPid() != null && !person.getFsPid().isBlank()) {
             label += " [" + person.getFsPid() + "]";
         }
-        AncestorLineSummary summary = getAncestorSummary(person);
-        if (summary != null && summary.getBadgeStatus() != null) {
-            label += " {" + summary.getBadgeStatus().name() + "}";
-        }
         return label;
-    }
-
-    private String buildTreeLabel(Long personId, String fallbackName) {
-        for (Person person : allPeople) {
-            if (person.getPersonId().equals(personId)) {
-                return buildTreeLabel(person);
-            }
-        }
-
-        return fallbackName == null || fallbackName.isBlank() ? "(Unnamed Person)" : fallbackName;
     }
 
     private void openSelectedPersonFromTree(TreeView<TreePersonNode> treeView) {
@@ -1589,16 +1949,7 @@ public class MainView extends BorderPane {
             return false;
         }
 
-        PersonOrdinanceStatus ordinanceStatus = ordinanceService.getOrCreateForPerson(person.getPersonId());
-        List<ParentChildLink> parents = relationshipService.getParentsForPerson(person.getPersonId());
-        List<SpouseLink> spouses = relationshipService.getSpousesForPerson(person.getPersonId());
-        List<OrdinanceEligibilityRow> rows = ordinanceEligibilityService.buildDashboard(
-                person,
-                ordinanceStatus,
-                parents,
-                spouses,
-                allPeople
-        );
+        List<OrdinanceEligibilityRow> rows = getOrdinanceTabData(person).eligibilityRows();
 
         for (OrdinanceEligibilityRow row : rows) {
             if (row.getRecordedStatus() != OrdinanceStatus.COMPLETE
@@ -1608,6 +1959,85 @@ public class MainView extends BorderPane {
         }
 
         return false;
+    }
+
+    private DescendantAttentionStatus resolveDescendantAttentionStatus(Person person) {
+        if (person == null || person.getPersonId() == null) {
+            return DescendantAttentionStatus.NONE;
+        }
+
+        List<OrdinanceEligibilityRow> rows = getOrdinanceTabData(person).eligibilityRows();
+        boolean hasPotential = false;
+        boolean allComplete = true;
+
+        for (OrdinanceEligibilityRow row : rows) {
+            OrdinanceStatus status = row.getSuggestedStatus();
+            if (status == OrdinanceStatus.OPEN) {
+                return DescendantAttentionStatus.AVAILABLE;
+            }
+            if (status == OrdinanceStatus.UNKNOWN) {
+                return DescendantAttentionStatus.NEEDS_INFO;
+            }
+            if (status == OrdinanceStatus.SOON_1Y
+                    || status == OrdinanceStatus.SOON_2Y
+                    || status == OrdinanceStatus.SOON_5Y
+                    || status == OrdinanceStatus.SOON_10Y
+                    || status == OrdinanceStatus.BLOCKED_110) {
+                hasPotential = true;
+            }
+            if (status != OrdinanceStatus.COMPLETE && status != OrdinanceStatus.NOT_APPLICABLE) {
+                allComplete = false;
+            }
+        }
+
+        if (hasPotential) {
+            return DescendantAttentionStatus.POTENTIAL;
+        }
+
+        return allComplete ? DescendantAttentionStatus.COMPLETE : DescendantAttentionStatus.NONE;
+    }
+
+    private List<OrdinanceEligibilityRow> buildEligibilityRows(Person person) {
+        return getOrdinanceTabData(person).eligibilityRows();
+    }
+
+    private List<AncestorLineSummary> getAncestorSummariesForPerson(Person person) {
+        if (person == null || person.getPersonId() == null) {
+            return List.of();
+        }
+
+        return ancestorSummariesByPersonIdCache.computeIfAbsent(person.getPersonId(), ignored -> {
+            return ancestorLineSummaryService.buildSummaries(
+                    collectAncestorsForPerson(person),
+                    allPeople
+            );
+        });
+    }
+
+    private OrdinanceTabData getOrdinanceTabData(Person person) {
+        if (person == null || person.getPersonId() == null) {
+            return OrdinanceTabData.empty();
+        }
+
+        return ordinanceTabDataByPersonIdCache.computeIfAbsent(person.getPersonId(), ignored -> {
+            PersonOrdinanceStatus ordinanceStatus = ordinanceService.getOrCreateForPerson(person.getPersonId());
+            List<ParentChildLink> parents = relationshipService.getParentsForPerson(person.getPersonId());
+            List<SpouseLink> spouses = relationshipService.getSpousesForPerson(person.getPersonId());
+
+            List<OrdinanceEligibilityRow> eligibilityRows = ordinanceEligibilityService.buildDashboard(
+                    person,
+                    ordinanceStatus,
+                    parents,
+                    spouses,
+                    allPeople
+            );
+
+            return new OrdinanceTabData(
+                    ordinanceStatus,
+                    List.copyOf(spouses),
+                    List.copyOf(eligibilityRows)
+            );
+        });
     }
 
     private Integer extractYear(String text) {
@@ -1648,10 +2078,32 @@ public class MainView extends BorderPane {
             showWarning("Please select a person to edit.");
             return;
         }
+        editPerson(selected);
+    }
+
+    private void editSelectedOrRootPerson() {
+        Person target = personTable.getSelectionModel().getSelectedItem();
+        if (target == null) {
+            target = getCurrentRootPerson();
+        }
+
+        if (target == null) {
+            showWarning("There is no selected person or current root person to edit.");
+            return;
+        }
+
+        editPerson(target);
+    }
+
+    private void editPerson(Person person) {
+        if (person == null || person.getPersonId() == null) {
+            showWarning("Please select a person to edit.");
+            return;
+        }
 
         PersonEditorDialog dialog = new PersonEditorDialog(
-                selected,
-                ordinanceService.getOrCreateForPerson(selected.getPersonId())
+                person,
+                ordinanceService.getOrCreateForPerson(person.getPersonId())
         );
         Optional<PersonEditorDialog.Result> result = dialog.showAndWait();
 
@@ -1698,12 +2150,7 @@ public class MainView extends BorderPane {
             return;
         }
 
-        try {
-            personService.setRootPerson(selected.getPersonId());
-            refreshPeople();
-        } catch (Exception ex) {
-            showError("Could not set the root person.", ex);
-        }
+        setCurrentRootPerson(selected);
     }
 
     private void addParentToSelectedPerson() {
@@ -1718,7 +2165,7 @@ public class MainView extends BorderPane {
                 true,
                 selected,
                 candidates,
-                buildSpouseCandidatesByPersonId(candidates),
+                buildSpouseCandidatesByPersonId(allPeople),
                 null
         );
         Optional<ParentChildDialog.Result> result = dialog.showAndWait();
@@ -1735,7 +2182,7 @@ public class MainView extends BorderPane {
                 );
 
                 if (input.getMirrorSpousePersonId() != null) {
-                    syncMirroredParentLink(
+                    ensureMirroredParentLinkExists(
                             selected.getPersonId(),
                             input.getMirrorSpousePersonId(),
                             input.getChildOrder(),
@@ -1769,7 +2216,7 @@ public class MainView extends BorderPane {
                 true,
                 selected,
                 candidates,
-                buildSpouseCandidatesByPersonId(candidates),
+                buildSpouseCandidatesByPersonId(allPeople),
                 selectedLink
         );
         Optional<ParentChildDialog.Result> result = dialog.showAndWait();
@@ -1787,7 +2234,7 @@ public class MainView extends BorderPane {
                 );
 
                 if (input.getMirrorSpousePersonId() != null) {
-                    syncMirroredParentLink(
+                    ensureMirroredParentLinkExists(
                             selected.getPersonId(),
                             input.getMirrorSpousePersonId(),
                             input.getChildOrder(),
@@ -1816,6 +2263,7 @@ public class MainView extends BorderPane {
 
         try {
             relationshipService.deleteParentLink(selectedLink.getLinkId());
+            invalidateDerivedCaches();
             refreshRelationshipTables(personTable.getSelectionModel().getSelectedItem());
             refreshPedigreeTree(personTable.getSelectionModel().getSelectedItem());
             refreshDescendancyTree(personTable.getSelectionModel().getSelectedItem());
@@ -1835,7 +2283,13 @@ public class MainView extends BorderPane {
         }
 
         List<Person> candidates = getEligibleChildrenForParentSelection(selected, null);
-        ParentChildDialog dialog = new ParentChildDialog(false, selected, candidates);
+        ParentChildDialog dialog = new ParentChildDialog(
+                false,
+                selected,
+                candidates,
+                buildSpouseCandidatesByPersonId(allPeople),
+                null
+        );
         Optional<ParentChildDialog.Result> result = dialog.showAndWait();
 
         result.ifPresent(input -> {
@@ -1848,6 +2302,15 @@ public class MainView extends BorderPane {
                         input.getChildOrder(),
                         input.getNotes()
                 );
+
+                if (input.getMirrorSpousePersonId() != null) {
+                    ensureMirroredParentLinkExists(
+                            childPersonId,
+                            input.getMirrorSpousePersonId(),
+                            input.getChildOrder(),
+                            input.getNotes()
+                    );
+                }
 
                 refreshPeople();
                 reselectPerson(selected.getPersonId());
@@ -1907,6 +2370,7 @@ public class MainView extends BorderPane {
 
         try {
             relationshipService.deleteChildLink(selectedLink.getLinkId());
+            invalidateDerivedCaches();
             refreshRelationshipTables(personTable.getSelectionModel().getSelectedItem());
             refreshPedigreeTree(personTable.getSelectionModel().getSelectedItem());
             refreshDescendancyTree(personTable.getSelectionModel().getSelectedItem());
@@ -2019,6 +2483,7 @@ public class MainView extends BorderPane {
 
         try {
             relationshipService.deleteSpouseLink(selectedLink.getSpouseLinkId());
+            invalidateDerivedCaches();
             refreshRelationshipTables(personTable.getSelectionModel().getSelectedItem());
             updateSummaryCard(personTable.getSelectionModel().getSelectedItem());
             refreshEligibilityTable(personTable.getSelectionModel().getSelectedItem());
@@ -2048,8 +2513,8 @@ public class MainView extends BorderPane {
         }
 
         try {
-            PersonOrdinanceStatus status = ordinanceService.getOrCreateForPerson(person.getPersonId());
-            ordinancePane.populate(person, status, relationshipService.getSpousesForPerson(person.getPersonId()));
+            OrdinanceTabData data = getOrdinanceTabData(person);
+            ordinancePane.populate(person, data.ordinanceStatus(), data.spouseLinks());
         } catch (Exception ex) {
             showError("Could not load ordinances.", ex);
         }
@@ -2071,6 +2536,7 @@ public class MainView extends BorderPane {
 
         try {
             updateOrdinanceStatus(selectedPerson.getPersonId(), selectedRow.ordinanceName(), selectedRow.spouseLink(), status);
+            invalidateDerivedCaches();
             refreshPeople();
             ordinancePane.reselectOrdinanceRow(selectedRow);
         } catch (Exception ex) {
@@ -2089,6 +2555,7 @@ public class MainView extends BorderPane {
 
         try {
             updateOrdinanceStatus(selectedRow.personId(), selectedRow.ordinanceName(), selectedRow.spouseLink(), status);
+            invalidateDerivedCaches();
             refreshPeople();
             reselectAncestorLine(selectedAncestorId);
             ancestorLinesPane.reselectWorkbenchRow(selectedRow);
@@ -2166,12 +2633,21 @@ public class MainView extends BorderPane {
                 );
             }
 
+            invalidateDerivedCaches();
             updateOrdinanceEditor(selected);
             refreshEligibilityTable(selected);
             refreshWorkQueue();
         } catch (Exception ex) {
             showError("Could not save ordinances.", ex);
         }
+    }
+
+    private void invalidateDerivedCaches() {
+        ancestorSummaryCache.clear();
+        ancestorSummariesByPersonIdCache.clear();
+        ordinanceTabDataByPersonIdCache.clear();
+        ancestorLinesWarmupDelay.stop();
+        ordinancesWarmupDelay.stop();
     }
 
     private boolean confirmRelationshipDelete(String title, String headerText) {
@@ -2236,16 +2712,9 @@ public class MainView extends BorderPane {
                 ));
     }
 
-    private void syncMirroredParentLink(long childPersonId, long spousePersonId, Integer childOrder, String notes) {
+    private void ensureMirroredParentLinkExists(long childPersonId, long spousePersonId, Integer childOrder, String notes) {
         for (ParentChildLink link : relationshipService.getParentsForPerson(childPersonId)) {
             if (link.getParentPersonId() != null && link.getParentPersonId().equals(spousePersonId)) {
-                relationshipService.updateParentLink(
-                        link.getLinkId(),
-                        childPersonId,
-                        spousePersonId,
-                        childOrder,
-                        notes
-                );
                 return;
             }
         }
@@ -2267,7 +2736,7 @@ public class MainView extends BorderPane {
             if (childPersonId == null) {
                 continue;
             }
-            syncMirroredParentLink(childPersonId, spousePersonId, null, null);
+            ensureMirroredParentLinkExists(childPersonId, spousePersonId, null, null);
         }
     }
 
@@ -2281,14 +2750,13 @@ public class MainView extends BorderPane {
             summarySpousesValue.setText("");
             summaryAncestorsValue.setText("");
             summaryDescendantsValue.setText("");
-            summaryLineBadgeValue.setText("");
+            summaryLineStatusValue.setText("");
             summaryLineNextAvailableValue.setText("");
             summaryLineOpenValue.setText("");
             summaryLineSoonValue.setText("");
             summaryLineWaitingValue.setText("");
             summaryLineUnresolvedValue.setText("");
             summaryLineCompleteValue.setText("");
-            summaryLineStewardshipValue.setText("");
             summaryLineReasonValue.setText("");
             return;
         }
@@ -2314,14 +2782,13 @@ public class MainView extends BorderPane {
             summaryDescendantsValue.setText(String.valueOf(descendantIds.size()));
 
             AncestorLineSummary summary = getAncestorSummary(person);
-            summaryLineBadgeValue.setText(summary == null || summary.getBadgeStatus() == null ? "" : summary.getBadgeStatus().name());
+            summaryLineStatusValue.setText(summary == null || summary.getBadgeStatus() == null ? "" : summary.getBadgeStatus().name());
             summaryLineNextAvailableValue.setText(summary == null ? "" : formatSummaryDate(summary.getNextAvailableDate()));
             summaryLineOpenValue.setText(summary == null ? "" : String.valueOf(summary.getOpenCount()));
             summaryLineSoonValue.setText(summary == null ? "" : String.valueOf(summary.getOpeningSoonCount()));
             summaryLineWaitingValue.setText(summary == null ? "" : String.valueOf(summary.getWaiting110Count()));
             summaryLineUnresolvedValue.setText(summary == null ? "" : String.valueOf(summary.getUnresolvedCount()));
             summaryLineCompleteValue.setText(summary == null ? "" : String.valueOf(summary.getCompleteCount()));
-            summaryLineStewardshipValue.setText(summary == null || summary.getStewardshipStatus() == null ? "" : summary.getStewardshipStatus().name());
             summaryLineReasonValue.setText(summary == null ? "" : nullSafe(summary.getSummaryReason()));
         } catch (Exception ex) {
             showError("Could not update the summary card.", ex);
@@ -2373,8 +2840,18 @@ public class MainView extends BorderPane {
 
     private void updateDetailArea(Person person) {
         if (person == null) {
+            relationshipToRootValue.setText("");
             detailArea.setText("");
             return;
+        }
+
+        Person currentRoot = getCurrentRootPerson();
+        if (currentRoot == null || currentRoot.getPersonId() == null) {
+            relationshipToRootValue.setText("");
+        } else if (currentRoot.getPersonId().equals(person.getPersonId())) {
+            relationshipToRootValue.setText("Self (active root)");
+        } else {
+            relationshipToRootValue.setText("Selected person; active root is " + nullSafe(currentRoot.getDisplayName()));
         }
 
         StringBuilder builder = new StringBuilder();
@@ -2403,11 +2880,32 @@ public class MainView extends BorderPane {
     private void updateStatus() {
         int visibleCount = personTable.getItems().size();
         int totalCount = allPeople.size();
-        String rootName = personService.getRootPerson()
+        String rootName = Optional.ofNullable(getCurrentRootPerson())
                 .map(Person::getDisplayName)
                 .orElse("(none)");
 
-        statusLabel.setText("Visible people: " + visibleCount + " / " + totalCount + "    Root person: " + rootName);
+        activeRootLabel.setText("Current Root: " + rootName);
+        statusLabel.setText("Visible people: " + visibleCount + " / " + totalCount + "    Active root: " + rootName);
+    }
+
+    private void updateSelectedPersonHeader(Person person) {
+        if (person == null) {
+            selectedPersonNameLabel.setText("None selected");
+            selectedPersonFsPidLabel.setText("");
+            selectedPersonFsPidLabel.setManaged(false);
+            selectedPersonFsPidLabel.setVisible(false);
+            return;
+        }
+
+        selectedPersonNameLabel.setText(nullSafe(person.getDisplayName()).isBlank()
+                ? "(Unnamed Person)"
+                : nullSafe(person.getDisplayName()));
+
+        String fsPid = nullSafe(person.getFsPid()).trim();
+        boolean hasFsPid = !fsPid.isBlank();
+        selectedPersonFsPidLabel.setText(hasFsPid ? "FS PID " + fsPid : "");
+        selectedPersonFsPidLabel.setManaged(hasFsPid);
+        selectedPersonFsPidLabel.setVisible(hasFsPid);
     }
 
     private void clearSelectionDependentViews() {
@@ -2415,7 +2913,6 @@ public class MainView extends BorderPane {
         updateSummaryCard(null);
         updateDetailArea(null);
         refreshRelationshipTables(null);
-        refreshReportsTable(null);
         refreshAncestorLineTable(null);
         refreshPedigreeTree(null);
         refreshDescendancyTree(null);
@@ -2451,104 +2948,56 @@ public class MainView extends BorderPane {
 
         return ancestorSummaryCache.computeIfAbsent(
                 person.getPersonId(),
-                ignored -> applyLineStewardship(ancestorLineSummaryService.buildSummary(person, allPeople))
+                ignored -> ancestorLineSummaryService.buildSummary(person, allPeople)
         );
-    }
-
-    private void applyLineStewardship(List<AncestorLineSummary> summaries) {
-        if (summaries == null || summaries.isEmpty()) {
-            return;
-        }
-
-        List<Long> ancestorIds = summaries.stream()
-                .map(AncestorLineSummary::getAncestorPersonId)
-                .filter(id -> id != null)
-                .toList();
-
-        Map<Long, LineStewardship> stewardshipByAncestorId = lineStewardshipService.getByAncestorIds(ancestorIds);
-        for (AncestorLineSummary summary : summaries) {
-            applyLineStewardship(summary, stewardshipByAncestorId.get(summary.getAncestorPersonId()));
-        }
-    }
-
-    private AncestorLineSummary applyLineStewardship(AncestorLineSummary summary) {
-        if (summary == null || summary.getAncestorPersonId() == null) {
-            return summary;
-        }
-
-        applyLineStewardship(summary, lineStewardshipService.getOrCreateForAncestor(summary.getAncestorPersonId()));
-        return summary;
-    }
-
-    private void applyLineStewardship(AncestorLineSummary summary, LineStewardship stewardship) {
-        if (summary == null) {
-            return;
-        }
-
-        summary.setStewardshipStatus(
-                stewardship == null ? LineStewardshipStatus.UNASSIGNED : stewardship.getStewardshipStatus()
-        );
-        summary.setStewardshipNotes(stewardship == null ? null : stewardship.getNotes());
-    }
-
-    private void reloadSelectedAncestorStewardship() {
-        AncestorLineSummary selected = ancestorLinesPane.getSelectedAncestorLine();
-        if (selected == null || selected.getAncestorPersonId() == null) {
-            ancestorLinesPane.loadStewardship(null);
-            return;
-        }
-
-        LineStewardship stewardship = lineStewardshipService.getOrCreateForAncestor(selected.getAncestorPersonId());
-        applyLineStewardship(selected, stewardship);
-        updateMatchingReportStewardship(stewardship);
-        ancestorLinesPane.loadStewardship(selected);
-    }
-
-    private void saveSelectedAncestorStewardship() {
-        AncestorLineSummary selected = ancestorLinesPane.getSelectedAncestorLine();
-        if (selected == null || selected.getAncestorPersonId() == null) {
-            showWarning("Please select an ancestor line first.");
-            return;
-        }
-
-        try {
-            LineStewardship stewardship = new LineStewardship();
-            stewardship.setAncestorPersonId(selected.getAncestorPersonId());
-            stewardship.setStewardshipStatus(ancestorLinesPane.getStewardshipStatus());
-            stewardship.setNotes(ancestorLinesPane.getStewardshipNotes());
-
-            LineStewardship saved = lineStewardshipService.save(stewardship);
-
-            applyLineStewardship(selected, saved);
-            updateMatchingReportStewardship(saved);
-            ancestorSummaryCache.clear();
-            updateSummaryCard(personTable.getSelectionModel().getSelectedItem());
-            ancestorLinesPane.loadStewardship(selected);
-        } catch (Exception ex) {
-            showError("Could not save line stewardship.", ex);
-        }
-    }
-
-    private void updateMatchingReportStewardship(LineStewardship stewardship) {
-        if (stewardship == null || stewardship.getAncestorPersonId() == null) {
-            return;
-        }
-
-        for (AncestorLineSummary row : allReportRows) {
-            if (row.getAncestorPersonId() != null && row.getAncestorPersonId().equals(stewardship.getAncestorPersonId())) {
-                applyLineStewardship(row, stewardship);
-            }
-        }
-
-        reportsTable.refresh();
-        ancestorLinesPane.refreshAncestorLineTable();
     }
 
     private String formatSummaryDate(LocalDate date) {
         return date == null ? "" : SUMMARY_DATE_FORMAT.format(date);
     }
 
-    private record TreePersonNode(long personId, String label) {
+    private enum TreeBranchType {
+        ANCESTRY,
+        DESCENDANCY
+    }
+
+    private enum DescendantAttentionStatus {
+        AVAILABLE,
+        POTENTIAL,
+        NEEDS_INFO,
+        COMPLETE,
+        NONE
+    }
+
+    private record OrdinanceTabData(
+            PersonOrdinanceStatus ordinanceStatus,
+            List<SpouseLink> spouseLinks,
+            List<OrdinanceEligibilityRow> eligibilityRows
+    ) {
+        private static OrdinanceTabData empty() {
+            return new OrdinanceTabData(new PersonOrdinanceStatus(), List.of(), List.of());
+        }
+    }
+
+    private record TreePersonNode(
+            long personId,
+            String label,
+            TreeBranchType branchType,
+            Set<Long> path,
+            DescendantAttentionStatus attentionStatus
+    ) {
+        private static TreePersonNode placeholder(String label) {
+            return new TreePersonNode(-1L, label, TreeBranchType.ANCESTRY, Set.of(), DescendantAttentionStatus.NONE);
+        }
+
+        private static TreePersonNode loading() {
+            return new TreePersonNode(-1L, "Loading...", TreeBranchType.ANCESTRY, Set.of(), DescendantAttentionStatus.NONE);
+        }
+
+        private boolean loadingNode() {
+            return personId < 0 && "Loading...".equals(label);
+        }
+
         @Override
         public String toString() {
             return label;

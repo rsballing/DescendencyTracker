@@ -6,23 +6,23 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
+import javafx.geometry.Insets;
 import javafx.scene.control.Button;
-import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToolBar;
-import javafx.scene.control.TreeItem;
-import javafx.scene.control.TreeView;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -32,20 +32,18 @@ final class PeopleNavigatorPane {
     private final SortedList<Person> sortedPeople = new SortedList<>(filteredPeople);
 
     private final TableView<Person> personTable = new TableView<>();
-    private final TreeView<BirthYearTreeNode> peopleBirthYearTree = new TreeView<>();
     private final TextField searchField = new TextField();
-    private final CheckBox rootOnlyCheckBox = new CheckBox("Only root");
-    private final CheckBox bornMoreThan110CheckBox = new CheckBox("Born 110+ years ago");
-    private final CheckBox born110WithIncompleteCheckBox = new CheckBox("110+ with incomplete ordinances");
+    private final ComboBox<String> peopleFilterCombo = new ComboBox<>();
 
     private final Predicate<Person> hasIncompleteTrackedOrdinances;
     private final Consumer<Person> onSelectionChanged;
-    private final ToolBar filterToolBar;
-    private final TabPane content;
-    private boolean syncingPeopleViewSelection;
+    private final VBox content;
 
     PeopleNavigatorPane(
+            Runnable onAddPerson,
             Runnable onEditSelected,
+            Runnable onShowSelectedPersonDetails,
+            Runnable onSetSelectedAsRoot,
             Consumer<Person> onSelectionChanged,
             Predicate<Person> hasIncompleteTrackedOrdinances
     ) {
@@ -53,31 +51,34 @@ final class PeopleNavigatorPane {
         this.onSelectionChanged = onSelectionChanged;
 
         configurePersonSearchBar();
-        configurePersonTable(onEditSelected);
-        configurePeopleBirthYearTree();
+        configurePersonTable(onEditSelected, onShowSelectedPersonDetails, onSetSelectedAsRoot);
 
         sortedPeople.comparatorProperty().bind(personTable.comparatorProperty());
         personTable.setItems(sortedPeople);
-        personTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
-            if (!syncingPeopleViewSelection) {
-                selectPersonInBirthYearTree(newSelection);
-            }
-            this.onSelectionChanged.accept(newSelection);
-        });
+        personTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) ->
+                this.onSelectionChanged.accept(newSelection)
+        );
 
-        filterToolBar = buildFilterToolBar();
+        Label heading = new Label("People");
+        heading.getStyleClass().add("panel-title");
+        Button addPersonButton = new Button("+");
+        addPersonButton.setFocusTraversable(false);
+        addPersonButton.setMnemonicParsing(false);
+        addPersonButton.setMinSize(30, 24);
+        addPersonButton.setPrefSize(30, 24);
+        addPersonButton.setMaxSize(30, 24);
+        addPersonButton.getStyleClass().addAll("icon-button", "section-add-button");
+        addPersonButton.setOnAction(event -> onAddPerson.run());
+        HBox headingRow = new HBox(6, heading, addPersonButton);
+        headingRow.getStyleClass().add("panel-header-row");
 
-        content = new TabPane();
-        content.getTabs().add(new Tab("Table", personTable));
-        content.getTabs().add(new Tab("Birth Years", peopleBirthYearTree));
-        content.getTabs().forEach(tab -> tab.setClosable(false));
+        content = new VBox(6, headingRow, buildFilterToolBar(), personTable);
+        content.setPadding(new Insets(8));
+        content.getStyleClass().add("panel-surface");
+        VBox.setVgrow(personTable, Priority.ALWAYS);
     }
 
-    ToolBar getFilterToolBar() {
-        return filterToolBar;
-    }
-
-    TabPane getContent() {
+    VBox getContent() {
         return content;
     }
 
@@ -96,9 +97,7 @@ final class PeopleNavigatorPane {
 
     void clearFilters() {
         searchField.clear();
-        rootOnlyCheckBox.setSelected(false);
-        bornMoreThan110CheckBox.setSelected(false);
-        born110WithIncompleteCheckBox.setSelected(false);
+        peopleFilterCombo.setValue("All People");
     }
 
     boolean selectPersonById(long personId, boolean clearFiltersFirst) {
@@ -116,6 +115,7 @@ final class PeopleNavigatorPane {
         for (Person person : personTable.getItems()) {
             if (personId.equals(person.getPersonId())) {
                 personTable.getSelectionModel().select(person);
+                personTable.scrollTo(person);
                 return;
             }
         }
@@ -132,42 +132,44 @@ final class PeopleNavigatorPane {
     }
 
     private void configurePersonSearchBar() {
-        searchField.setPromptText("Search by name, PID, dates, notes, sex, or reviewed status...");
-        searchField.setPrefWidth(320);
+        searchField.setPromptText("Filter people by name, PID, year, notes, sex, or reviewed status...");
+        searchField.setPrefWidth(160);
+        peopleFilterCombo.getItems().setAll(
+                "All People",
+                "Born 110+ years ago",
+                "110+ with incomplete ordinances"
+        );
+        peopleFilterCombo.setValue("All People");
+        peopleFilterCombo.setPrefWidth(180);
 
         searchField.textProperty().addListener((obs, oldValue, newValue) -> applyPersonFilter());
-        rootOnlyCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> applyPersonFilter());
-        bornMoreThan110CheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> applyPersonFilter());
-        born110WithIncompleteCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> applyPersonFilter());
+        peopleFilterCombo.valueProperty().addListener((obs, oldValue, newValue) -> applyPersonFilter());
     }
 
     private ToolBar buildFilterToolBar() {
-        Button clearFiltersButton = new Button("Clear Filters");
+        Button clearFiltersButton = new Button("Clear");
         clearFiltersButton.setOnAction(event -> clearFilters());
 
-        return new ToolBar(
+        ToolBar toolBar = new ToolBar(
                 new Label("Find"),
                 searchField,
                 clearFiltersButton,
-                rootOnlyCheckBox,
-                bornMoreThan110CheckBox,
-                born110WithIncompleteCheckBox
+                peopleFilterCombo
         );
+        toolBar.getStyleClass().add("section-toolbar");
+        return toolBar;
     }
 
     private void applyPersonFilter() {
         String searchText = searchField.getText() == null ? "" : searchField.getText().trim().toLowerCase();
-        boolean rootOnly = rootOnlyCheckBox.isSelected();
-        boolean bornMoreThan110 = bornMoreThan110CheckBox.isSelected() || born110WithIncompleteCheckBox.isSelected();
-        boolean born110WithIncomplete = born110WithIncompleteCheckBox.isSelected();
+        String activeFilter = peopleFilterCombo.getValue();
+        boolean bornMoreThan110 = "Born 110+ years ago".equals(activeFilter)
+                || "110+ with incomplete ordinances".equals(activeFilter);
+        boolean born110WithIncomplete = "110+ with incomplete ordinances".equals(activeFilter);
         String[] tokens = searchText.isBlank() ? new String[0] : searchText.split("\\s+");
 
         filteredPeople.setPredicate(person -> {
             if (person == null) {
-                return false;
-            }
-
-            if (rootOnly && !person.isRoot()) {
                 return false;
             }
 
@@ -193,7 +195,6 @@ final class PeopleNavigatorPane {
         });
 
         reconcileSelectionAfterFilter();
-        refreshPeopleBirthYearTree();
     }
 
     private void reconcileSelectionAfterFilter() {
@@ -221,82 +222,81 @@ final class PeopleNavigatorPane {
         }
     }
 
-    private void configurePersonTable(Runnable onEditSelected) {
-        TableColumn<Person, String> rootColumn = new TableColumn<>("Root");
-        rootColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(data.getValue().isRoot() ? "*" : "")
+    private void configurePersonTable(
+            Runnable onEditSelected,
+            Runnable onShowSelectedPersonDetails,
+            Runnable onSetSelectedAsRoot
+    ) {
+        TableColumn<Person, String> nameColumn = new TableColumn<>("Name");
+        nameColumn.setCellValueFactory(data ->
+                new ReadOnlyStringWrapper(nullSafe(data.getValue().getDisplayName()))
         );
-        rootColumn.setPrefWidth(60);
-
-        TableColumn<Person, String> preferredNameColumn = new TableColumn<>("Preferred Name");
-        preferredNameColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getPreferredName()))
-        );
-        preferredNameColumn.setPrefWidth(180);
-
-        TableColumn<Person, String> fsPidColumn = new TableColumn<>("FS PID");
-        fsPidColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getFsPid()))
-        );
-        fsPidColumn.setPrefWidth(140);
-
-        TableColumn<Person, String> givenNamesColumn = new TableColumn<>("Given Names");
-        givenNamesColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getGivenNames()))
-        );
-        givenNamesColumn.setPrefWidth(180);
-
-        TableColumn<Person, String> surnameColumn = new TableColumn<>("Surname");
-        surnameColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getSurname()))
-        );
-        surnameColumn.setPrefWidth(160);
-
-        TableColumn<Person, String> sexColumn = new TableColumn<>("Sex");
-        sexColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(data.getValue().getSex().name())
-        );
-        sexColumn.setPrefWidth(100);
-
-        TableColumn<Person, String> livingColumn = new TableColumn<>("Living");
-        livingColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(data.getValue().isLiving() ? "Yes" : "No")
-        );
-        livingColumn.setPrefWidth(100);
+        nameColumn.setPrefWidth(240);
 
         TableColumn<Person, String> birthColumn = new TableColumn<>("Birth");
         birthColumn.setCellValueFactory(data ->
                 new ReadOnlyStringWrapper(nullSafe(data.getValue().getBirthDateText()))
         );
-        birthColumn.setPrefWidth(140);
+        birthColumn.setPrefWidth(110);
 
         TableColumn<Person, String> deathColumn = new TableColumn<>("Death");
         deathColumn.setCellValueFactory(data ->
                 new ReadOnlyStringWrapper(nullSafe(data.getValue().getDeathDateText()))
         );
-        deathColumn.setPrefWidth(140);
+        deathColumn.setPrefWidth(110);
 
-        TableColumn<Person, String> reviewedColumn = new TableColumn<>("Reviewed");
-        reviewedColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(data.getValue().getReviewedStatus().name())
+        TableColumn<Person, String> fsPidColumn = new TableColumn<>("FS PID");
+        fsPidColumn.setCellValueFactory(data ->
+                new ReadOnlyStringWrapper(nullSafe(data.getValue().getFsPid()))
         );
-        reviewedColumn.setPrefWidth(140);
+        fsPidColumn.setPrefWidth(120);
 
-        personTable.getColumns().addAll(
-                rootColumn,
-                preferredNameColumn,
-                fsPidColumn,
-                givenNamesColumn,
-                surnameColumn,
-                sexColumn,
-                livingColumn,
-                birthColumn,
-                deathColumn,
-                reviewedColumn
-        );
+        personTable.getColumns().addAll(nameColumn, birthColumn, deathColumn, fsPidColumn);
+        personTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        personTable.setPlaceholder(new Label("No matching people."));
+        personTable.setFixedCellSize(23);
+        personTable.getStyleClass().add("compact-table");
+
+        MenuItem editPersonItem = new MenuItem("Edit Person");
+        editPersonItem.setOnAction(event -> onEditSelected.run());
+        MenuItem personDetailsItem = new MenuItem("Person Details");
+        personDetailsItem.setOnAction(event -> onShowSelectedPersonDetails.run());
+        MenuItem setRootItem = new MenuItem("Set As Root");
+        setRootItem.setOnAction(event -> onSetSelectedAsRoot.run());
+        ContextMenu tableContextMenu = new ContextMenu(editPersonItem, personDetailsItem, setRootItem);
+        personTable.setContextMenu(tableContextMenu);
 
         personTable.setRowFactory(table -> {
             TableRow<Person> row = new TableRow<>();
+            MenuItem rowEditItem = new MenuItem("Edit Person");
+            rowEditItem.setOnAction(event -> {
+                if (!row.isEmpty()) {
+                    personTable.getSelectionModel().select(row.getItem());
+                    onEditSelected.run();
+                }
+            });
+            MenuItem rowDetailsItem = new MenuItem("Person Details");
+            rowDetailsItem.setOnAction(event -> {
+                if (!row.isEmpty()) {
+                    personTable.getSelectionModel().select(row.getItem());
+                    onShowSelectedPersonDetails.run();
+                }
+            });
+            MenuItem rowSetRootItem = new MenuItem("Set As Root");
+            rowSetRootItem.setOnAction(event -> {
+                if (!row.isEmpty()) {
+                    personTable.getSelectionModel().select(row.getItem());
+                    onSetSelectedAsRoot.run();
+                }
+            });
+            ContextMenu rowContextMenu = new ContextMenu(rowEditItem, rowDetailsItem, rowSetRootItem);
+            row.contextMenuProperty().bind(
+                    javafx.beans.binding.Bindings.when(row.emptyProperty())
+                            .then((ContextMenu) null)
+                            .otherwise(rowContextMenu)
+            );
+            row.itemProperty().addListener((obs, oldPerson, newPerson) -> updateRowStyle(row, newPerson));
+            row.selectedProperty().addListener((obs, wasSelected, isSelected) -> updateRowStyle(row, row.getItem()));
             row.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && !row.isEmpty()) {
                     onEditSelected.run();
@@ -306,104 +306,27 @@ final class PeopleNavigatorPane {
         });
     }
 
-    private void configurePeopleBirthYearTree() {
-        peopleBirthYearTree.setShowRoot(false);
-        peopleBirthYearTree.setRoot(new TreeItem<>(new BirthYearTreeNode(-1L, "People")));
-        peopleBirthYearTree.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
-            if (syncingPeopleViewSelection) {
-                return;
-            }
-
-            if (newSelection == null || newSelection.getValue() == null) {
-                return;
-            }
-
-            long personId = newSelection.getValue().personId();
-            if (personId > 0) {
-                selectVisiblePersonInTable(personId);
-            }
-        });
-    }
-
-    private void refreshPeopleBirthYearTree() {
-        TreeItem<BirthYearTreeNode> root = new TreeItem<>(new BirthYearTreeNode(-1L, "People"));
-        Map<String, List<Person>> peopleByBirthYear = new HashMap<>();
-
-        for (Person person : personTable.getItems()) {
-            String birthYearGroup = resolveBirthYearGroup(person);
-            peopleByBirthYear.computeIfAbsent(birthYearGroup, ignored -> FXCollections.observableArrayList()).add(person);
+    private void updateRowStyle(TableRow<Person> row, Person person) {
+        if (row == null || row.isEmpty() || person == null) {
+            row.setStyle("");
+            return;
         }
 
-        List<String> years = peopleByBirthYear.keySet().stream()
-                .sorted((left, right) -> {
-                    if ("Unknown Birth Year".equals(left)) {
-                        return 1;
-                    }
-                    if ("Unknown Birth Year".equals(right)) {
-                        return -1;
-                    }
-                    return left.compareTo(right);
-                })
-                .toList();
-
-        for (String year : years) {
-            List<Person> people = peopleByBirthYear.get(year);
-            TreeItem<BirthYearTreeNode> yearItem = new TreeItem<>(
-                    new BirthYearTreeNode(-1L, year + " (" + people.size() + ")")
-            );
-            yearItem.setExpanded(false);
-
-            for (Person person : people) {
-                yearItem.getChildren().add(new TreeItem<>(
-                        new BirthYearTreeNode(person.getPersonId(), buildPersonBirthYearTreeLabel(person))
-                ));
-            }
-
-            root.getChildren().add(yearItem);
+        if (person.isRoot()) {
+            row.setStyle("-fx-font-weight: bold; -fx-font-style: italic;");
+            return;
         }
 
-        peopleBirthYearTree.setRoot(root);
-        if (!root.getChildren().isEmpty()) {
-            root.getChildren().forEach(item -> item.setExpanded(false));
-        }
-    }
-
-    private void selectPersonInBirthYearTree(Person person) {
-        syncingPeopleViewSelection = true;
-        try {
-            if (person == null || peopleBirthYearTree.getRoot() == null) {
-                peopleBirthYearTree.getSelectionModel().clearSelection();
-                return;
-            }
-
-            for (TreeItem<BirthYearTreeNode> yearItem : peopleBirthYearTree.getRoot().getChildren()) {
-                for (TreeItem<BirthYearTreeNode> personItem : yearItem.getChildren()) {
-                    if (personItem.getValue() != null && person.getPersonId().equals(personItem.getValue().personId())) {
-                        yearItem.setExpanded(true);
-                        peopleBirthYearTree.getSelectionModel().select(personItem);
-                        return;
-                    }
-                }
-            }
-
-            peopleBirthYearTree.getSelectionModel().clearSelection();
-        } finally {
-            syncingPeopleViewSelection = false;
-        }
+        row.setStyle("");
     }
 
     private boolean selectVisiblePersonInTable(long personId) {
-        syncingPeopleViewSelection = true;
-        try {
-            for (Person person : personTable.getItems()) {
-                if (person.getPersonId().equals(personId)) {
-                    personTable.getSelectionModel().select(person);
-                    personTable.scrollTo(person);
-                    return true;
-                }
+        for (Person person : personTable.getItems()) {
+            if (person.getPersonId().equals(personId)) {
+                personTable.getSelectionModel().select(person);
+                personTable.scrollTo(person);
+                return true;
             }
-        } finally {
-            syncingPeopleViewSelection = false;
         }
         return false;
     }
@@ -442,30 +365,7 @@ final class PeopleNavigatorPane {
         return null;
     }
 
-    private String resolveBirthYearGroup(Person person) {
-        Integer birthYear = extractYear(person == null ? null : person.getBirthDateText());
-        return birthYear == null ? "Unknown Birth Year" : String.valueOf(birthYear);
-    }
-
-    private String buildPersonBirthYearTreeLabel(Person person) {
-        String label = person.getDisplayName();
-        if (person.getBirthDateText() != null && !person.getBirthDateText().isBlank()) {
-            label += " - " + person.getBirthDateText();
-        }
-        if (person.getFsPid() != null && !person.getFsPid().isBlank()) {
-            label += " [" + person.getFsPid() + "]";
-        }
-        return label;
-    }
-
     private String nullSafe(String value) {
         return value == null ? "" : value;
-    }
-
-    private record BirthYearTreeNode(long personId, String label) {
-        @Override
-        public String toString() {
-            return label;
-        }
     }
 }

@@ -33,7 +33,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
 
     private final ComboBox<Person> relatedPersonComboBox = new ComboBox<>();
     private final CheckBox createNewPersonCheckBox = new CheckBox("Create a new person instead");
-    private final CheckBox mirrorToSpouseCheckBox = new CheckBox("Also add this child to a spouse of the parent");
+    private final CheckBox mirrorToSpouseCheckBox = new CheckBox();
     private final ComboBox<Person> mirrorSpouseComboBox = new ComboBox<>();
 
     private final TextField preferredNameField = new TextField();
@@ -45,6 +45,8 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
 
     private final TextField childOrderField = new TextField();
     private final TextArea notesArea = new TextArea();
+    private final boolean addingParent;
+    private final Person selectedPerson;
     private final boolean allowSpouseMirror;
     private final Map<Long, List<Person>> spouseCandidatesByParentId;
 
@@ -63,8 +65,13 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
             Map<Long, List<Person>> spouseCandidatesByParentId,
             ParentChildLink existingLink
     ) {
-        this.allowSpouseMirror = addingParent;
+        this.addingParent = addingParent;
+        this.selectedPerson = selectedPerson;
+        this.allowSpouseMirror = existingLink == null;
         this.spouseCandidatesByParentId = spouseCandidatesByParentId == null ? Collections.emptyMap() : spouseCandidatesByParentId;
+        mirrorToSpouseCheckBox.setText(addingParent
+                ? "Also add this child to another spouse of the selected parent"
+                : "Also add this child to a spouse of " + selectedPerson.getDisplayName());
 
         setTitle(existingLink == null
                 ? (addingParent ? "Add Parent" : "Add Child")
@@ -156,7 +163,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
 
             if (allowSpouseMirror && mirrorToSpouseCheckBox.isSelected() && mirrorSpouseComboBox.getValue() == null) {
                 event.consume();
-                showWarning("Please select a spouse to mirror this parent relationship.");
+                showWarning("Please select the spouse that should also be linked to this child.");
                 return;
             }
 
@@ -198,7 +205,9 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
                         newPerson,
                         childOrder,
                         clean(notesArea.getText()),
-                        null
+                        allowSpouseMirror && mirrorToSpouseCheckBox.isSelected() && mirrorSpouseComboBox.getValue() != null
+                                ? mirrorSpouseComboBox.getValue().getPersonId()
+                                : null
                 );
             }
 
@@ -327,7 +336,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
             return;
         }
 
-        Person selectedParent = relatedPersonComboBox.getValue();
+        Person selectedParent = addingParent ? relatedPersonComboBox.getValue() : selectedPerson;
         List<Person> spouseCandidates = selectedParent == null || selectedParent.getPersonId() == null
                 ? List.of()
                 : spouseCandidatesByParentId.getOrDefault(selectedParent.getPersonId(), List.of());
@@ -339,6 +348,10 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
         }
         if (mirrorSpouseComboBox.getValue() == null && spouseCandidates.size() == 1) {
             mirrorSpouseComboBox.setValue(spouseCandidates.get(0));
+        }
+
+        if (spouseCandidates.size() == 1 && (!addingParent || !createNewPersonCheckBox.isSelected())) {
+            mirrorToSpouseCheckBox.setSelected(true);
         }
 
         if (spouseCandidates.isEmpty()) {
@@ -353,9 +366,8 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
             return;
         }
 
-        boolean creatingNew = createNewPersonCheckBox.isSelected();
         boolean hasSpouses = !mirrorSpouseComboBox.getItems().isEmpty();
-        boolean mirrorEnabled = !creatingNew && hasSpouses;
+        boolean mirrorEnabled = hasSpouses && (!addingParent || !createNewPersonCheckBox.isSelected());
 
         mirrorToSpouseCheckBox.setDisable(!mirrorEnabled);
         if (!mirrorEnabled) {

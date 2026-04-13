@@ -58,13 +58,17 @@ public class DescendencyTrackerApp extends Application {
                     relationshipService,
                     ordinanceService,
                     ancestorLineSummaryService,
-                    lineStewardshipService,
                     ordinanceEligibilityService,
                     backupService,
                     workQueueService
             );
 
             Scene scene = new Scene(mainView, 1500, 900);
+            scene.getStylesheets().add(
+                    DescendencyTrackerApp.class
+                            .getResource("/family/balling/descendencytracker/ui/app-theme.css")
+                            .toExternalForm()
+            );
             primaryStage.setTitle("DescendencyTracker");
             primaryStage.setScene(scene);
             primaryStage.show();
