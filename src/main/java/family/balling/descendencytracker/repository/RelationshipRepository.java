@@ -25,6 +25,7 @@ public interface RelationshipRepository {
             String marriageDateText,
             String marriageNotes,
             OrdinanceStatus sealingToSpouseStatus,
+            boolean sealedToSpouseReserved,
             String sealingStatusDate,
             String sealingNotes
     );
@@ -36,6 +37,7 @@ public interface RelationshipRepository {
             String marriageDateText,
             String marriageNotes,
             OrdinanceStatus sealingToSpouseStatus,
+            boolean sealedToSpouseReserved,
             String sealingStatusDate,
             String sealingNotes
     );

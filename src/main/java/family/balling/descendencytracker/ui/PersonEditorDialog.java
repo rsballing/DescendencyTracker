@@ -51,11 +51,13 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
 
     private final ComboBox<ReviewedStatus> reviewedStatusComboBox = new ComboBox<>();
     private final TextArea notesArea = new TextArea();
-    private final ComboBox<OrdinanceStatus> baptismStatusComboBox = new ComboBox<>();
-    private final ComboBox<OrdinanceStatus> confirmationStatusComboBox = new ComboBox<>();
-    private final ComboBox<OrdinanceStatus> initiatoryStatusComboBox = new ComboBox<>();
-    private final ComboBox<OrdinanceStatus> endowmentStatusComboBox = new ComboBox<>();
-    private final ComboBox<OrdinanceStatus> sealedToParentsStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> baptismStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> confirmationStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> initiatoryStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> endowmentStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> sealedToParentsStatusComboBox = new ComboBox<>();
+    private final CheckBox confirmedNoChildrenCheckBox = new CheckBox("Confirmed no children");
+    private final CheckBox confirmedNoSpouseCheckBox = new CheckBox("Confirmed no spouse");
     private final TextArea ordinanceNotesArea = new TextArea();
     private final PersonOrdinanceStatus existingOrdinanceStatus;
 
@@ -108,15 +110,22 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
                     reviewedStatusComboBox.getValue() == null ? ReviewedStatus.NOT_REVIEWED : reviewedStatusComboBox.getValue()
             );
             result.setNotes(DateTextSupport.clean(notesArea.getText()));
+            result.setConfirmedNoChildren(confirmedNoChildrenCheckBox.isSelected());
+            result.setConfirmedNoSpouse(confirmedNoSpouseCheckBox.isSelected());
 
             PersonOrdinanceStatus ordinanceStatus = existingOrdinanceStatus == null
                     ? new PersonOrdinanceStatus()
                     : existingOrdinanceStatus;
             ordinanceStatus.setBaptismStatus(selectedOrdinanceStatus(baptismStatusComboBox));
+            ordinanceStatus.setBaptismReserved(selectedReserved(baptismStatusComboBox));
             ordinanceStatus.setConfirmationStatus(selectedOrdinanceStatus(confirmationStatusComboBox));
+            ordinanceStatus.setConfirmationReserved(selectedReserved(confirmationStatusComboBox));
             ordinanceStatus.setInitiatoryStatus(selectedOrdinanceStatus(initiatoryStatusComboBox));
+            ordinanceStatus.setInitiatoryReserved(selectedReserved(initiatoryStatusComboBox));
             ordinanceStatus.setEndowmentStatus(selectedOrdinanceStatus(endowmentStatusComboBox));
+            ordinanceStatus.setEndowmentReserved(selectedReserved(endowmentStatusComboBox));
             ordinanceStatus.setSealedToParentsStatus(selectedOrdinanceStatus(sealedToParentsStatusComboBox));
+            ordinanceStatus.setSealedToParentsReserved(selectedReserved(sealedToParentsStatusComboBox));
             ordinanceStatus.setOrdinanceNotes(DateTextSupport.clean(ordinanceNotesArea.getText()));
 
             return new Result(result, ordinanceStatus);
@@ -179,6 +188,13 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         grid.add(new Label("Sealed to Parents"), 0, row);
         grid.add(sealedToParentsStatusComboBox, 1, row++);
 
+        GridPane confirmationsGrid = new GridPane();
+        confirmationsGrid.setHgap(10);
+        confirmationsGrid.add(confirmedNoChildrenCheckBox, 0, 0);
+        confirmationsGrid.add(confirmedNoSpouseCheckBox, 1, 0);
+        grid.add(new Label("Relationship Confirmations"), 0, row);
+        grid.add(confirmationsGrid, 1, row++);
+
         grid.add(new Label("Ordinance Notes"), 0, row);
         grid.add(ordinanceNotesArea, 1, row++);
 
@@ -203,11 +219,11 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         birthPrecisionComboBox.getItems().setAll(DatePrecision.values());
         deathPrecisionComboBox.getItems().setAll(DatePrecision.values());
         reviewedStatusComboBox.getItems().setAll(ReviewedStatus.values());
-        baptismStatusComboBox.getItems().setAll(OrdinanceStatus.values());
-        confirmationStatusComboBox.getItems().setAll(OrdinanceStatus.values());
-        initiatoryStatusComboBox.getItems().setAll(OrdinanceStatus.values());
-        endowmentStatusComboBox.getItems().setAll(OrdinanceStatus.values());
-        sealedToParentsStatusComboBox.getItems().setAll(OrdinanceStatus.values());
+        baptismStatusComboBox.getItems().setAll(OrdinanceStatusChoice.all());
+        confirmationStatusComboBox.getItems().setAll(OrdinanceStatusChoice.all());
+        initiatoryStatusComboBox.getItems().setAll(OrdinanceStatusChoice.all());
+        endowmentStatusComboBox.getItems().setAll(OrdinanceStatusChoice.all());
+        sealedToParentsStatusComboBox.getItems().setAll(OrdinanceStatusChoice.all());
 
         preferredNameField.setPromptText("Required");
         fsPidFields.setValue(null);
@@ -218,11 +234,13 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         birthPrecisionComboBox.setValue(DatePrecision.UNKNOWN);
         deathPrecisionComboBox.setValue(DatePrecision.UNKNOWN);
         reviewedStatusComboBox.setValue(ReviewedStatus.NOT_REVIEWED);
-        baptismStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
-        confirmationStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
-        initiatoryStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
-        endowmentStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
-        sealedToParentsStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
+        baptismStatusComboBox.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
+        confirmationStatusComboBox.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
+        initiatoryStatusComboBox.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
+        endowmentStatusComboBox.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
+        sealedToParentsStatusComboBox.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
+        confirmedNoChildrenCheckBox.setSelected(false);
+        confirmedNoSpouseCheckBox.setSelected(false);
 
         livingCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateLivingState());
         sexComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleSexShortcut);
@@ -289,12 +307,14 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         );
 
         notesArea.setText(nullSafe(existingPerson.getNotes()));
+        confirmedNoChildrenCheckBox.setSelected(existingPerson.isConfirmedNoChildren());
+        confirmedNoSpouseCheckBox.setSelected(existingPerson.isConfirmedNoSpouse());
         if (existingOrdinanceStatus != null) {
-            baptismStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getBaptismStatus()));
-            confirmationStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getConfirmationStatus()));
-            initiatoryStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getInitiatoryStatus()));
-            endowmentStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getEndowmentStatus()));
-            sealedToParentsStatusComboBox.setValue(safeStatus(existingOrdinanceStatus.getSealedToParentsStatus()));
+            baptismStatusComboBox.setValue(OrdinanceStatusChoice.of(existingOrdinanceStatus.getBaptismStatus(), existingOrdinanceStatus.isBaptismReserved()));
+            confirmationStatusComboBox.setValue(OrdinanceStatusChoice.of(existingOrdinanceStatus.getConfirmationStatus(), existingOrdinanceStatus.isConfirmationReserved()));
+            initiatoryStatusComboBox.setValue(OrdinanceStatusChoice.of(existingOrdinanceStatus.getInitiatoryStatus(), existingOrdinanceStatus.isInitiatoryReserved()));
+            endowmentStatusComboBox.setValue(OrdinanceStatusChoice.of(existingOrdinanceStatus.getEndowmentStatus(), existingOrdinanceStatus.isEndowmentReserved()));
+            sealedToParentsStatusComboBox.setValue(OrdinanceStatusChoice.of(existingOrdinanceStatus.getSealedToParentsStatus(), existingOrdinanceStatus.isSealedToParentsReserved()));
             ordinanceNotesArea.setText(nullSafe(existingOrdinanceStatus.getOrdinanceNotes()));
         }
 
@@ -368,27 +388,28 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         }
     }
 
-    private void configureOrdinanceShortcut(ComboBox<OrdinanceStatus> comboBox) {
+    private void configureOrdinanceShortcut(ComboBox<OrdinanceStatusChoice> comboBox) {
         comboBox.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
-            OrdinanceStatus status = mapOrdinanceShortcut(event.getCode());
-            if (status != null) {
-                comboBox.setValue(status);
+            OrdinanceStatusChoice choice = mapOrdinanceShortcut(event.getCode());
+            if (choice != null) {
+                comboBox.setValue(choice);
                 event.consume();
             }
         });
     }
 
-    private OrdinanceStatus mapOrdinanceShortcut(KeyCode keyCode) {
+    private OrdinanceStatusChoice mapOrdinanceShortcut(KeyCode keyCode) {
         return switch (keyCode) {
-            case C -> OrdinanceStatus.COMPLETE;
-            case O -> OrdinanceStatus.OPEN;
-            case U -> OrdinanceStatus.UNKNOWN;
-            case N -> OrdinanceStatus.NOT_APPLICABLE;
-            case B -> OrdinanceStatus.BLOCKED_110;
-            case DIGIT1, NUMPAD1 -> OrdinanceStatus.SOON_1Y;
-            case DIGIT2, NUMPAD2 -> OrdinanceStatus.SOON_2Y;
-            case DIGIT5, NUMPAD5 -> OrdinanceStatus.SOON_5Y;
-            case DIGIT0, NUMPAD0 -> OrdinanceStatus.SOON_10Y;
+            case C -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.COMPLETE);
+            case O -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.OPEN);
+            case R -> OrdinanceStatusChoice.reservedChoice();
+            case U -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.UNKNOWN);
+            case N -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.NOT_APPLICABLE);
+            case B -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.BLOCKED_110);
+            case DIGIT1, NUMPAD1 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_1Y);
+            case DIGIT2, NUMPAD2 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_2Y);
+            case DIGIT5, NUMPAD5 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_5Y);
+            case DIGIT0, NUMPAD0 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_10Y);
             default -> null;
         };
     }
@@ -435,12 +456,12 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         return value == null ? "" : value;
     }
 
-    private OrdinanceStatus selectedOrdinanceStatus(ComboBox<OrdinanceStatus> comboBox) {
-        return comboBox.getValue() == null ? OrdinanceStatus.UNKNOWN : comboBox.getValue();
+    private OrdinanceStatus selectedOrdinanceStatus(ComboBox<OrdinanceStatusChoice> comboBox) {
+        return comboBox.getValue() == null ? OrdinanceStatus.UNKNOWN : comboBox.getValue().status();
     }
 
-    private OrdinanceStatus safeStatus(OrdinanceStatus status) {
-        return status == null ? OrdinanceStatus.UNKNOWN : status;
+    private boolean selectedReserved(ComboBox<OrdinanceStatusChoice> comboBox) {
+        return comboBox.getValue() != null && comboBox.getValue().isReserved();
     }
 
     private void showWarning(String message) {

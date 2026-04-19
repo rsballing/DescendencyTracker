@@ -45,7 +45,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
     private final TextField marriageDateField = new TextField();
     private final TextArea marriageNotesArea = new TextArea();
 
-    private final ComboBox<OrdinanceStatus> sealingStatusComboBox = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> sealingStatusComboBox = new ComboBox<>();
     private final TextField sealingDateField = new TextField();
     private final TextArea sealingNotesArea = new TextArea();
     private final VBox childSelectionBox = new VBox(6);
@@ -77,8 +77,8 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         sexComboBox.getItems().setAll(Sex.values());
         sexComboBox.setValue(Sex.UNKNOWN);
 
-        sealingStatusComboBox.getItems().setAll(OrdinanceStatus.values());
-        sealingStatusComboBox.setValue(OrdinanceStatus.UNKNOWN);
+        sealingStatusComboBox.getItems().setAll(OrdinanceStatusChoice.all());
+        sealingStatusComboBox.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
 
         marriageDateField.setPromptText("Optional text, e.g. 14 Jun 1904 or 1904");
         marriageNotesArea.setWrapText(true);
@@ -104,9 +104,10 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
 
             marriageDateField.setText(existingLink.getMarriageDateText() == null ? "" : existingLink.getMarriageDateText());
             marriageNotesArea.setText(existingLink.getMarriageNotes() == null ? "" : existingLink.getMarriageNotes());
-            sealingStatusComboBox.setValue(existingLink.getSealingToSpouseStatus() == null
-                    ? OrdinanceStatus.UNKNOWN
-                    : existingLink.getSealingToSpouseStatus());
+            sealingStatusComboBox.setValue(OrdinanceStatusChoice.of(
+                    existingLink.getSealingToSpouseStatus(),
+                    existingLink.isSealedToSpouseReserved()
+            ));
             sealingDateField.setText(existingLink.getSealingStatusDate() == null ? "" : existingLink.getSealingStatusDate());
             sealingNotesArea.setText(existingLink.getSealingNotes() == null ? "" : existingLink.getSealingNotes());
 
@@ -149,7 +150,8 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
                         newPerson,
                         DateTextSupport.normalizeDateText(marriageDateField.getText()),
                         DateTextSupport.clean(marriageNotesArea.getText()),
-                        sealingStatusComboBox.getValue(),
+                        selectedOrdinanceStatus(sealingStatusComboBox),
+                        selectedReserved(sealingStatusComboBox),
                         DateTextSupport.normalizeDateText(sealingDateField.getText()),
                         DateTextSupport.clean(sealingNotesArea.getText()),
                         selectedChildIds()
@@ -161,7 +163,8 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
                     null,
                     DateTextSupport.normalizeDateText(marriageDateField.getText()),
                     DateTextSupport.clean(marriageNotesArea.getText()),
-                    sealingStatusComboBox.getValue(),
+                    selectedOrdinanceStatus(sealingStatusComboBox),
+                    selectedReserved(sealingStatusComboBox),
                     DateTextSupport.normalizeDateText(sealingDateField.getText()),
                     DateTextSupport.clean(sealingNotesArea.getText()),
                     selectedChildIds()
@@ -270,21 +273,22 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
     }
 
     private void handleSealingStatusShortcut(KeyEvent event) {
-        OrdinanceStatus status = switch (event.getCode()) {
-            case C -> OrdinanceStatus.COMPLETE;
-            case O -> OrdinanceStatus.OPEN;
-            case U -> OrdinanceStatus.UNKNOWN;
-            case N -> OrdinanceStatus.NOT_APPLICABLE;
-            case B -> OrdinanceStatus.BLOCKED_110;
-            case DIGIT1, NUMPAD1 -> OrdinanceStatus.SOON_1Y;
-            case DIGIT2, NUMPAD2 -> OrdinanceStatus.SOON_2Y;
-            case DIGIT5, NUMPAD5 -> OrdinanceStatus.SOON_5Y;
-            case DIGIT0, NUMPAD0 -> OrdinanceStatus.SOON_10Y;
+        OrdinanceStatusChoice choice = switch (event.getCode()) {
+            case C -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.COMPLETE);
+            case O -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.OPEN);
+            case R -> OrdinanceStatusChoice.reservedChoice();
+            case U -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.UNKNOWN);
+            case N -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.NOT_APPLICABLE);
+            case B -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.BLOCKED_110);
+            case DIGIT1, NUMPAD1 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_1Y);
+            case DIGIT2, NUMPAD2 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_2Y);
+            case DIGIT5, NUMPAD5 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_5Y);
+            case DIGIT0, NUMPAD0 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_10Y);
             default -> null;
         };
 
-        if (status != null) {
-            sealingStatusComboBox.setValue(status);
+        if (choice != null) {
+            sealingStatusComboBox.setValue(choice);
             event.consume();
         }
     }
@@ -360,6 +364,14 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         return label;
     }
 
+    private OrdinanceStatus selectedOrdinanceStatus(ComboBox<OrdinanceStatusChoice> comboBox) {
+        return comboBox.getValue() == null ? OrdinanceStatus.UNKNOWN : comboBox.getValue().status();
+    }
+
+    private boolean selectedReserved(ComboBox<OrdinanceStatusChoice> comboBox) {
+        return comboBox.getValue() != null && comboBox.getValue().isReserved();
+    }
+
     private void showWarning(String message) {
         Alert alert = new Alert(Alert.AlertType.WARNING);
         alert.setTitle("Validation");
@@ -374,6 +386,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
         private final String marriageDateText;
         private final String marriageNotes;
         private final OrdinanceStatus sealingStatus;
+        private final boolean sealingReserved;
         private final String sealingStatusDate;
         private final String sealingNotes;
         private final List<Long> childPersonIdsToCopy;
@@ -384,6 +397,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
                 String marriageDateText,
                 String marriageNotes,
                 OrdinanceStatus sealingStatus,
+                boolean sealingReserved,
                 String sealingStatusDate,
                 String sealingNotes,
                 List<Long> childPersonIdsToCopy
@@ -393,6 +407,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
             this.marriageDateText = marriageDateText;
             this.marriageNotes = marriageNotes;
             this.sealingStatus = sealingStatus;
+            this.sealingReserved = sealingReserved;
             this.sealingStatusDate = sealingStatusDate;
             this.sealingNotes = sealingNotes;
             this.childPersonIdsToCopy = childPersonIdsToCopy == null ? List.of() : List.copyOf(childPersonIdsToCopy);
@@ -416,6 +431,10 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
 
         public OrdinanceStatus getSealingStatus() {
             return sealingStatus;
+        }
+
+        public boolean isSealingReserved() {
+            return sealingReserved;
         }
 
         public String getSealingStatusDate() {

@@ -8,6 +8,7 @@ import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
@@ -28,15 +29,15 @@ import java.util.function.Consumer;
 
 final class OrdinancePane {
     private final Label headerLabel = new Label("Select a person to edit ordinances.");
-    private final ComboBox<OrdinanceStatus> baptismStatusCombo = new ComboBox<>();
-    private final ComboBox<OrdinanceStatus> confirmationStatusCombo = new ComboBox<>();
-    private final ComboBox<OrdinanceStatus> initiatoryStatusCombo = new ComboBox<>();
-    private final ComboBox<OrdinanceStatus> endowmentStatusCombo = new ComboBox<>();
-    private final ComboBox<OrdinanceStatus> sealedToParentsStatusCombo = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> baptismStatusCombo = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> confirmationStatusCombo = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> initiatoryStatusCombo = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> endowmentStatusCombo = new ComboBox<>();
+    private final ComboBox<OrdinanceStatusChoice> sealedToParentsStatusCombo = new ComboBox<>();
     private final TextArea ordinanceNotesArea = new TextArea();
     private final VBox spouseSealingEditorBox = new VBox(8);
     private final TableView<OrdinanceEditorRow> ordinanceTable = new TableView<>();
-    private final Map<Long, ComboBox<OrdinanceStatus>> spouseSealingStatusEditors = new HashMap<>();
+    private final Map<Long, ComboBox<OrdinanceStatusChoice>> spouseSealingStatusEditors = new HashMap<>();
     private final VBox content;
 
     OrdinancePane(
@@ -119,11 +120,11 @@ final class OrdinancePane {
 
     void clear() {
         headerLabel.setText("Select a person to edit ordinances.");
-        baptismStatusCombo.setValue(OrdinanceStatus.UNKNOWN);
-        confirmationStatusCombo.setValue(OrdinanceStatus.UNKNOWN);
-        initiatoryStatusCombo.setValue(OrdinanceStatus.UNKNOWN);
-        endowmentStatusCombo.setValue(OrdinanceStatus.UNKNOWN);
-        sealedToParentsStatusCombo.setValue(OrdinanceStatus.UNKNOWN);
+        baptismStatusCombo.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
+        confirmationStatusCombo.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
+        initiatoryStatusCombo.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
+        endowmentStatusCombo.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
+        sealedToParentsStatusCombo.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
         ordinanceNotesArea.setText("");
         ordinanceTable.setItems(FXCollections.observableArrayList());
         refreshSpouseSealingEditor(null, List.of());
@@ -136,11 +137,11 @@ final class OrdinancePane {
         }
 
         headerLabel.setText("Ordinances for " + person.getDisplayName());
-        baptismStatusCombo.setValue(safeStatus(ordinanceStatus.getBaptismStatus()));
-        confirmationStatusCombo.setValue(safeStatus(ordinanceStatus.getConfirmationStatus()));
-        initiatoryStatusCombo.setValue(safeStatus(ordinanceStatus.getInitiatoryStatus()));
-        endowmentStatusCombo.setValue(safeStatus(ordinanceStatus.getEndowmentStatus()));
-        sealedToParentsStatusCombo.setValue(safeStatus(ordinanceStatus.getSealedToParentsStatus()));
+        baptismStatusCombo.setValue(OrdinanceStatusChoice.of(ordinanceStatus.getBaptismStatus(), ordinanceStatus.isBaptismReserved()));
+        confirmationStatusCombo.setValue(OrdinanceStatusChoice.of(ordinanceStatus.getConfirmationStatus(), ordinanceStatus.isConfirmationReserved()));
+        initiatoryStatusCombo.setValue(OrdinanceStatusChoice.of(ordinanceStatus.getInitiatoryStatus(), ordinanceStatus.isInitiatoryReserved()));
+        endowmentStatusCombo.setValue(OrdinanceStatusChoice.of(ordinanceStatus.getEndowmentStatus(), ordinanceStatus.isEndowmentReserved()));
+        sealedToParentsStatusCombo.setValue(OrdinanceStatusChoice.of(ordinanceStatus.getSealedToParentsStatus(), ordinanceStatus.isSealedToParentsReserved()));
         ordinanceNotesArea.setText(nullSafe(ordinanceStatus.getOrdinanceNotes()));
         ordinanceTable.setItems(FXCollections.observableArrayList(buildOrdinanceRows(person, ordinanceStatus, spouseLinks)));
         refreshSpouseSealingEditor(person, spouseLinks);
@@ -177,11 +178,11 @@ final class OrdinancePane {
 
     void applySuggestedStatus(String ordinanceName, OrdinanceStatus status) {
         switch (ordinanceName) {
-            case "Baptism" -> baptismStatusCombo.setValue(status);
-            case "Confirmation" -> confirmationStatusCombo.setValue(status);
-            case "Initiatory" -> initiatoryStatusCombo.setValue(status);
-            case "Endowment" -> endowmentStatusCombo.setValue(status);
-            case "Sealed to Parents" -> sealedToParentsStatusCombo.setValue(status);
+            case "Baptism" -> baptismStatusCombo.setValue(OrdinanceStatusChoice.fromShortcut(status));
+            case "Confirmation" -> confirmationStatusCombo.setValue(OrdinanceStatusChoice.fromShortcut(status));
+            case "Initiatory" -> initiatoryStatusCombo.setValue(OrdinanceStatusChoice.fromShortcut(status));
+            case "Endowment" -> endowmentStatusCombo.setValue(OrdinanceStatusChoice.fromShortcut(status));
+            case "Sealed to Parents" -> sealedToParentsStatusCombo.setValue(OrdinanceStatusChoice.fromShortcut(status));
             default -> {
             }
         }
@@ -191,29 +192,34 @@ final class OrdinancePane {
         PersonOrdinanceStatus status = new PersonOrdinanceStatus();
         status.setPersonId(personId);
         status.setBaptismStatus(selectedStatus(baptismStatusCombo));
+        status.setBaptismReserved(selectedReserved(baptismStatusCombo));
         status.setConfirmationStatus(selectedStatus(confirmationStatusCombo));
+        status.setConfirmationReserved(selectedReserved(confirmationStatusCombo));
         status.setInitiatoryStatus(selectedStatus(initiatoryStatusCombo));
+        status.setInitiatoryReserved(selectedReserved(initiatoryStatusCombo));
         status.setEndowmentStatus(selectedStatus(endowmentStatusCombo));
+        status.setEndowmentReserved(selectedReserved(endowmentStatusCombo));
         status.setSealedToParentsStatus(selectedStatus(sealedToParentsStatusCombo));
+        status.setSealedToParentsReserved(selectedReserved(sealedToParentsStatusCombo));
         status.setOrdinanceNotes(ordinanceNotesArea.getText());
         return status;
     }
 
-    Map<Long, OrdinanceStatus> getSpouseSealingSelections() {
-        Map<Long, OrdinanceStatus> selections = new HashMap<>();
-        for (Map.Entry<Long, ComboBox<OrdinanceStatus>> entry : spouseSealingStatusEditors.entrySet()) {
-            selections.put(entry.getKey(), selectedStatus(entry.getValue()));
+    Map<Long, OrdinanceStatusChoice> getSpouseSealingSelections() {
+        Map<Long, OrdinanceStatusChoice> selections = new HashMap<>();
+        for (Map.Entry<Long, ComboBox<OrdinanceStatusChoice>> entry : spouseSealingStatusEditors.entrySet()) {
+            selections.put(entry.getKey(), entry.getValue().getValue());
         }
         return selections;
     }
 
-    private void configureStatusCombo(ComboBox<OrdinanceStatus> comboBox) {
-        comboBox.getItems().setAll(OrdinanceStatus.values());
-        comboBox.setValue(OrdinanceStatus.UNKNOWN);
+    private void configureStatusCombo(ComboBox<OrdinanceStatusChoice> comboBox) {
+        comboBox.getItems().setAll(OrdinanceStatusChoice.all());
+        comboBox.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
         comboBox.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
-            OrdinanceStatus status = mapStatusShortcut(event.getCode());
-            if (status != null) {
-                comboBox.setValue(status);
+            OrdinanceStatusChoice choice = mapStatusShortcut(event.getCode());
+            if (choice != null) {
+                comboBox.setValue(choice);
                 event.consume();
             }
         });
@@ -255,9 +261,9 @@ final class OrdinancePane {
 
         ordinanceTable.setFocusTraversable(true);
         ordinanceTable.setOnKeyPressed(event -> {
-            OrdinanceStatus status = mapStatusShortcut(event.getCode());
-            if (status != null) {
-                onSelectedStatusShortcut.accept(status);
+            OrdinanceStatusChoice choice = mapStatusShortcut(event.getCode());
+            if (choice != null) {
+                onSelectedStatusShortcut.accept(choice.status());
                 event.consume();
             }
         });
@@ -290,7 +296,11 @@ final class OrdinancePane {
 
     private String buildPersonOrdinanceDetails(PersonOrdinanceStatus ordinanceStatus) {
         String notes = nullSafe(ordinanceStatus.getOrdinanceNotes()).trim();
-        return notes.isBlank() ? "" : "Notes: " + notes;
+        String reserved = buildReservedSummary(ordinanceStatus);
+        if (notes.isBlank()) {
+            return reserved;
+        }
+        return reserved.isBlank() ? "Notes: " + notes : reserved + " | Notes: " + notes;
     }
 
     private void refreshSpouseSealingEditor(Person person, List<SpouseLink> spouseLinks) {
@@ -311,9 +321,12 @@ final class OrdinancePane {
             Label spouseLabel = new Label(nullSafe(spouseLink.getOtherPersonDisplayName(person.getPersonId())));
             spouseLabel.setMinWidth(220);
 
-            ComboBox<OrdinanceStatus> sealingStatusCombo = new ComboBox<>();
+            ComboBox<OrdinanceStatusChoice> sealingStatusCombo = new ComboBox<>();
             configureStatusCombo(sealingStatusCombo);
-            sealingStatusCombo.setValue(safeStatus(spouseLink.getSealingToSpouseStatus()));
+            sealingStatusCombo.setValue(OrdinanceStatusChoice.of(
+                    spouseLink.getSealingToSpouseStatus(),
+                    spouseLink.isSealedToSpouseReserved()
+            ));
             sealingStatusCombo.setPrefWidth(180);
             spouseSealingStatusEditors.put(spouseLink.getSpouseLinkId(), sealingStatusCombo);
 
@@ -333,6 +346,9 @@ final class OrdinancePane {
         StringBuilder details = new StringBuilder();
         appendDetail(details, "Marriage", spouseLink.getMarriageDateText());
         appendDetail(details, "Sealing Date", spouseLink.getSealingStatusDate());
+        if (spouseLink.isSealedToSpouseReserved()) {
+            appendDetail(details, null, "Reserved");
+        }
 
         String marriageNotes = nullSafe(spouseLink.getMarriageNotes()).trim();
         String sealingNotes = nullSafe(spouseLink.getSealingNotes()).trim();
@@ -348,6 +364,26 @@ final class OrdinancePane {
         }
 
         return details.toString();
+    }
+
+    private String buildReservedSummary(PersonOrdinanceStatus ordinanceStatus) {
+        List<String> reserved = FXCollections.observableArrayList();
+        if (ordinanceStatus.isBaptismReserved()) {
+            reserved.add("Baptism reserved");
+        }
+        if (ordinanceStatus.isConfirmationReserved()) {
+            reserved.add("Confirmation reserved");
+        }
+        if (ordinanceStatus.isInitiatoryReserved()) {
+            reserved.add("Initiatory reserved");
+        }
+        if (ordinanceStatus.isEndowmentReserved()) {
+            reserved.add("Endowment reserved");
+        }
+        if (ordinanceStatus.isSealedToParentsReserved()) {
+            reserved.add("Sealed to Parents reserved");
+        }
+        return String.join(", ", reserved);
     }
 
     private void appendDetail(StringBuilder builder, String label, String value) {
@@ -366,27 +402,28 @@ final class OrdinancePane {
         builder.append(cleanedValue);
     }
 
-    private OrdinanceStatus mapStatusShortcut(KeyCode keyCode) {
+    private OrdinanceStatusChoice mapStatusShortcut(KeyCode keyCode) {
         return switch (keyCode) {
-            case C -> OrdinanceStatus.COMPLETE;
-            case O -> OrdinanceStatus.OPEN;
-            case U -> OrdinanceStatus.UNKNOWN;
-            case N -> OrdinanceStatus.NOT_APPLICABLE;
-            case B -> OrdinanceStatus.BLOCKED_110;
-            case DIGIT1, NUMPAD1 -> OrdinanceStatus.SOON_1Y;
-            case DIGIT2, NUMPAD2 -> OrdinanceStatus.SOON_2Y;
-            case DIGIT5, NUMPAD5 -> OrdinanceStatus.SOON_5Y;
-            case DIGIT0, NUMPAD0 -> OrdinanceStatus.SOON_10Y;
+            case C -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.COMPLETE);
+            case O -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.OPEN);
+            case R -> OrdinanceStatusChoice.reservedChoice();
+            case U -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.UNKNOWN);
+            case N -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.NOT_APPLICABLE);
+            case B -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.BLOCKED_110);
+            case DIGIT1, NUMPAD1 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_1Y);
+            case DIGIT2, NUMPAD2 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_2Y);
+            case DIGIT5, NUMPAD5 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_5Y);
+            case DIGIT0, NUMPAD0 -> OrdinanceStatusChoice.fromShortcut(OrdinanceStatus.SOON_10Y);
             default -> null;
         };
     }
 
-    private OrdinanceStatus selectedStatus(ComboBox<OrdinanceStatus> comboBox) {
-        return comboBox.getValue() == null ? OrdinanceStatus.UNKNOWN : comboBox.getValue();
+    private OrdinanceStatus selectedStatus(ComboBox<OrdinanceStatusChoice> comboBox) {
+        return comboBox.getValue() == null ? OrdinanceStatus.UNKNOWN : comboBox.getValue().status();
     }
 
-    private OrdinanceStatus safeStatus(OrdinanceStatus status) {
-        return status == null ? OrdinanceStatus.UNKNOWN : status;
+    private boolean selectedReserved(ComboBox<OrdinanceStatusChoice> comboBox) {
+        return comboBox.getValue() != null && comboBox.getValue().isReserved();
     }
 
     private String nullSafe(String value) {

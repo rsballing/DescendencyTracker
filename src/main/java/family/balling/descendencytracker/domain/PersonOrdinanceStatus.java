@@ -10,6 +10,11 @@ public class PersonOrdinanceStatus {
     private OrdinanceStatus initiatoryStatus = OrdinanceStatus.UNKNOWN;
     private OrdinanceStatus endowmentStatus = OrdinanceStatus.UNKNOWN;
     private OrdinanceStatus sealedToParentsStatus = OrdinanceStatus.UNKNOWN;
+    private boolean baptismReserved;
+    private boolean confirmationReserved;
+    private boolean initiatoryReserved;
+    private boolean endowmentReserved;
+    private boolean sealedToParentsReserved;
     private String ordinanceNotes;
     private String updatedAt;
     private int version = 1;
@@ -62,6 +67,46 @@ public class PersonOrdinanceStatus {
 
     public void setSealedToParentsStatus(OrdinanceStatus sealedToParentsStatus) {
         this.sealedToParentsStatus = sealedToParentsStatus;
+    }
+
+    public boolean isBaptismReserved() {
+        return baptismReserved;
+    }
+
+    public void setBaptismReserved(boolean baptismReserved) {
+        this.baptismReserved = baptismReserved;
+    }
+
+    public boolean isConfirmationReserved() {
+        return confirmationReserved;
+    }
+
+    public void setConfirmationReserved(boolean confirmationReserved) {
+        this.confirmationReserved = confirmationReserved;
+    }
+
+    public boolean isInitiatoryReserved() {
+        return initiatoryReserved;
+    }
+
+    public void setInitiatoryReserved(boolean initiatoryReserved) {
+        this.initiatoryReserved = initiatoryReserved;
+    }
+
+    public boolean isEndowmentReserved() {
+        return endowmentReserved;
+    }
+
+    public void setEndowmentReserved(boolean endowmentReserved) {
+        this.endowmentReserved = endowmentReserved;
+    }
+
+    public boolean isSealedToParentsReserved() {
+        return sealedToParentsReserved;
+    }
+
+    public void setSealedToParentsReserved(boolean sealedToParentsReserved) {
+        this.sealedToParentsReserved = sealedToParentsReserved;
     }
 
     public String getOrdinanceNotes() {

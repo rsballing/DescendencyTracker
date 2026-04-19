@@ -135,6 +135,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                    sl.marriage_date_text,
                    sl.marriage_notes,
                    sl.sealing_to_spouse_status,
+                   sl.sealed_to_spouse_reserved,
                    sl.sealing_status_date,
                    sl.sealing_notes,
                    sl.is_deleted,
@@ -373,6 +374,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             String marriageDateText,
             String marriageNotes,
             OrdinanceStatus sealingToSpouseStatus,
+            boolean sealedToSpouseReserved,
             String sealingStatusDate,
             String sealingNotes
     ) {
@@ -388,6 +390,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                         marriageDateText,
                         marriageNotes,
                         sealingToSpouseStatus,
+                        sealedToSpouseReserved,
                         sealingStatusDate,
                         sealingNotes
                 );
@@ -399,6 +402,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                     marriageDateText,
                     marriageNotes,
                     sealingToSpouseStatus,
+                    sealedToSpouseReserved,
                     sealingStatusDate,
                     sealingNotes
             );
@@ -412,6 +416,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                 marriage_date_text,
                 marriage_notes,
                 sealing_to_spouse_status,
+                sealed_to_spouse_reserved,
                 sealing_status_date,
                 sealing_notes,
                 is_deleted,
@@ -420,7 +425,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                 version,
                 sync_status,
                 last_synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
             """;
 
         String now = Instant.now().toString();
@@ -434,13 +439,14 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             statement.setString(4, marriageDateText);
             statement.setString(5, marriageNotes);
             statement.setString(6, safeStatus(sealingToSpouseStatus).name());
-            statement.setString(7, sealingStatusDate);
-            statement.setString(8, sealingNotes);
-            statement.setString(9, now);
+            statement.setInt(7, sealedToSpouseReserved ? 1 : 0);
+            statement.setString(8, sealingStatusDate);
+            statement.setString(9, sealingNotes);
             statement.setString(10, now);
-            statement.setInt(11, 1);
-            statement.setString(12, SyncStatus.LOCAL_ONLY.name());
-            statement.setString(13, null);
+            statement.setString(11, now);
+            statement.setInt(12, 1);
+            statement.setString(13, SyncStatus.LOCAL_ONLY.name());
+            statement.setString(14, null);
 
             statement.executeUpdate();
 
@@ -464,6 +470,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             String marriageDateText,
             String marriageNotes,
             OrdinanceStatus sealingToSpouseStatus,
+            boolean sealedToSpouseReserved,
             String sealingStatusDate,
             String sealingNotes
     ) {
@@ -481,6 +488,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                     marriageDateText,
                     marriageNotes,
                     sealingToSpouseStatus,
+                    sealedToSpouseReserved,
                     sealingStatusDate,
                     sealingNotes
             )
@@ -491,6 +499,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                     marriageDateText,
                     marriageNotes,
                     sealingToSpouseStatus,
+                    sealedToSpouseReserved,
                     sealingStatusDate,
                     sealingNotes
             );
@@ -505,6 +514,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                 marriageDateText,
                 marriageNotes,
                 sealingToSpouseStatus,
+                sealedToSpouseReserved,
                 sealingStatusDate,
                 sealingNotes
         );
@@ -517,6 +527,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             String marriageDateText,
             String marriageNotes,
             OrdinanceStatus sealingToSpouseStatus,
+            boolean sealedToSpouseReserved,
             String sealingStatusDate,
             String sealingNotes
     ) {
@@ -527,6 +538,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                 marriage_date_text = ?,
                 marriage_notes = ?,
                 sealing_to_spouse_status = ?,
+                sealed_to_spouse_reserved = ?,
                 sealing_status_date = ?,
                 sealing_notes = ?,
                 is_deleted = 0,
@@ -545,10 +557,11 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             statement.setString(3, marriageDateText);
             statement.setString(4, marriageNotes);
             statement.setString(5, safeStatus(sealingToSpouseStatus).name());
-            statement.setString(6, sealingStatusDate);
-            statement.setString(7, sealingNotes);
-            statement.setString(8, Instant.now().toString());
-            statement.setLong(9, spouseLinkId);
+            statement.setInt(6, sealedToSpouseReserved ? 1 : 0);
+            statement.setString(7, sealingStatusDate);
+            statement.setString(8, sealingNotes);
+            statement.setString(9, Instant.now().toString());
+            statement.setLong(10, spouseLinkId);
 
             int updated = statement.executeUpdate();
             if (updated != 1) {
@@ -568,6 +581,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             String marriageDateText,
             String marriageNotes,
             OrdinanceStatus sealingToSpouseStatus,
+            boolean sealedToSpouseReserved,
             String sealingStatusDate,
             String sealingNotes
     ) {
@@ -579,6 +593,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                 marriage_date_text = ?,
                 marriage_notes = ?,
                 sealing_to_spouse_status = ?,
+                sealed_to_spouse_reserved = ?,
                 sealing_status_date = ?,
                 sealing_notes = ?,
                 version = version + 1,
@@ -596,10 +611,11 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
             statement.setString(3, marriageDateText);
             statement.setString(4, marriageNotes);
             statement.setString(5, safeStatus(sealingToSpouseStatus).name());
-            statement.setString(6, sealingStatusDate);
-            statement.setString(7, sealingNotes);
-            statement.setString(8, Instant.now().toString());
-            statement.setLong(9, spouseLinkId);
+            statement.setInt(6, sealedToSpouseReserved ? 1 : 0);
+            statement.setString(7, sealingStatusDate);
+            statement.setString(8, sealingNotes);
+            statement.setString(9, Instant.now().toString());
+            statement.setLong(10, spouseLinkId);
 
             int updated = statement.executeUpdate();
             if (updated != 1) {
@@ -732,6 +748,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                    sl.marriage_date_text,
                    sl.marriage_notes,
                    sl.sealing_to_spouse_status,
+                   sl.sealed_to_spouse_reserved,
                    sl.sealing_status_date,
                    sl.sealing_notes,
                    sl.is_deleted,
@@ -778,6 +795,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
                    sl.marriage_date_text,
                    sl.marriage_notes,
                    sl.sealing_to_spouse_status,
+                   sl.sealed_to_spouse_reserved,
                    sl.sealing_status_date,
                    sl.sealing_notes,
                    sl.is_deleted,
@@ -860,6 +878,7 @@ public class SqliteRelationshipRepository implements RelationshipRepository {
         link.setMarriageDateText(rs.getString("marriage_date_text"));
         link.setMarriageNotes(rs.getString("marriage_notes"));
         link.setSealingToSpouseStatus(readStatus(rs.getString("sealing_to_spouse_status")));
+        link.setSealedToSpouseReserved(rs.getInt("sealed_to_spouse_reserved") == 1);
         link.setSealingStatusDate(rs.getString("sealing_status_date"));
         link.setSealingNotes(rs.getString("sealing_notes"));
         link.setDeleted(rs.getInt("is_deleted") == 1);

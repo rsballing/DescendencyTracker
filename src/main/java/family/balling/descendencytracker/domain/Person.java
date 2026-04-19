@@ -21,6 +21,8 @@ public class Person {
     private ReviewedStatus reviewedStatus = ReviewedStatus.NOT_REVIEWED;
     private String notes;
     private boolean root;
+    private boolean confirmedNoChildren;
+    private boolean confirmedNoSpouse;
     private boolean deleted;
     private String createdAt;
     private String updatedAt;
@@ -47,6 +49,8 @@ public class Person {
         this.reviewedStatus = other.reviewedStatus;
         this.notes = other.notes;
         this.root = other.root;
+        this.confirmedNoChildren = other.confirmedNoChildren;
+        this.confirmedNoSpouse = other.confirmedNoSpouse;
         this.deleted = other.deleted;
         this.createdAt = other.createdAt;
         this.updatedAt = other.updatedAt;
@@ -181,6 +185,22 @@ public class Person {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    public boolean isConfirmedNoChildren() {
+        return confirmedNoChildren;
+    }
+
+    public void setConfirmedNoChildren(boolean confirmedNoChildren) {
+        this.confirmedNoChildren = confirmedNoChildren;
+    }
+
+    public boolean isConfirmedNoSpouse() {
+        return confirmedNoSpouse;
+    }
+
+    public void setConfirmedNoSpouse(boolean confirmedNoSpouse) {
+        this.confirmedNoSpouse = confirmedNoSpouse;
     }
 
     public String getCreatedAt() {

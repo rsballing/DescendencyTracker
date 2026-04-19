@@ -41,6 +41,8 @@ public final class SchemaMigrator {
             ensureColumnExists(connection, "person", "version", "ALTER TABLE person ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
             ensureColumnExists(connection, "person", "sync_status", "ALTER TABLE person ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY'");
             ensureColumnExists(connection, "person", "last_synced_at", "ALTER TABLE person ADD COLUMN last_synced_at TEXT");
+            ensureColumnExists(connection, "person", "confirmed_no_children", "ALTER TABLE person ADD COLUMN confirmed_no_children INTEGER NOT NULL DEFAULT 0");
+            ensureColumnExists(connection, "person", "confirmed_no_spouse", "ALTER TABLE person ADD COLUMN confirmed_no_spouse INTEGER NOT NULL DEFAULT 0");
 
             statement.executeUpdate("""
                 CREATE INDEX IF NOT EXISTS idx_person_active_name
@@ -118,6 +120,12 @@ public final class SchemaMigrator {
             ensureColumnExists(
                     connection,
                     "spouse_link",
+                    "sealed_to_spouse_reserved",
+                    "ALTER TABLE spouse_link ADD COLUMN sealed_to_spouse_reserved INTEGER NOT NULL DEFAULT 0"
+            );
+            ensureColumnExists(
+                    connection,
+                    "spouse_link",
                     "sealing_status_date",
                     "ALTER TABLE spouse_link ADD COLUMN sealing_status_date TEXT"
             );
@@ -160,6 +168,11 @@ public final class SchemaMigrator {
             ensureColumnExists(connection, "person_ordinance_status", "version", "ALTER TABLE person_ordinance_status ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
             ensureColumnExists(connection, "person_ordinance_status", "sync_status", "ALTER TABLE person_ordinance_status ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY'");
             ensureColumnExists(connection, "person_ordinance_status", "last_synced_at", "ALTER TABLE person_ordinance_status ADD COLUMN last_synced_at TEXT");
+            ensureColumnExists(connection, "person_ordinance_status", "baptism_reserved", "ALTER TABLE person_ordinance_status ADD COLUMN baptism_reserved INTEGER NOT NULL DEFAULT 0");
+            ensureColumnExists(connection, "person_ordinance_status", "confirmation_reserved", "ALTER TABLE person_ordinance_status ADD COLUMN confirmation_reserved INTEGER NOT NULL DEFAULT 0");
+            ensureColumnExists(connection, "person_ordinance_status", "initiatory_reserved", "ALTER TABLE person_ordinance_status ADD COLUMN initiatory_reserved INTEGER NOT NULL DEFAULT 0");
+            ensureColumnExists(connection, "person_ordinance_status", "endowment_reserved", "ALTER TABLE person_ordinance_status ADD COLUMN endowment_reserved INTEGER NOT NULL DEFAULT 0");
+            ensureColumnExists(connection, "person_ordinance_status", "sealed_to_parents_reserved", "ALTER TABLE person_ordinance_status ADD COLUMN sealed_to_parents_reserved INTEGER NOT NULL DEFAULT 0");
 
             statement.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS line_stewardship (

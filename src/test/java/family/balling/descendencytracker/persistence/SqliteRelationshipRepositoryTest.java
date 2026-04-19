@@ -60,6 +60,7 @@ class SqliteRelationshipRepositoryTest {
                 "1900",
                 "first",
                 OrdinanceStatus.UNKNOWN,
+                false,
                 null,
                 null
         );
@@ -71,6 +72,7 @@ class SqliteRelationshipRepositoryTest {
                 "1901",
                 "restored",
                 OrdinanceStatus.COMPLETE,
+                true,
                 "1902",
                 "sealed"
         );
@@ -79,6 +81,7 @@ class SqliteRelationshipRepositoryTest {
         assertEquals("1901", restored.getMarriageDateText());
         assertEquals("restored", restored.getMarriageNotes());
         assertEquals(OrdinanceStatus.COMPLETE, restored.getSealingToSpouseStatus());
+        assertTrue(restored.isSealedToSpouseReserved());
         assertFalse(restored.isDeleted());
         assertEquals(1, countRows(databaseManager, "spouse_link"));
     }

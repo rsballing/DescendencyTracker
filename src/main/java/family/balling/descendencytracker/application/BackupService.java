@@ -13,6 +13,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 public class BackupService {
     private static final DateTimeFormatter TIMESTAMP_FORMAT =
@@ -80,12 +84,12 @@ public class BackupService {
                 statement.executeUpdate("DELETE FROM person");
                 statement.executeUpdate("DELETE FROM sqlite_sequence WHERE name IN ('person', 'parent_child_link', 'spouse_link')");
 
-                statement.executeUpdate("INSERT INTO person SELECT * FROM imported.person");
-                statement.executeUpdate("INSERT INTO parent_child_link SELECT * FROM imported.parent_child_link");
-                statement.executeUpdate("INSERT INTO spouse_link SELECT * FROM imported.spouse_link");
+                copySharedColumns(connection, "person");
+                copySharedColumns(connection, "parent_child_link");
+                copySharedColumns(connection, "spouse_link");
 
                 if (tableExists(connection, "imported", "person_ordinance_status")) {
-                    statement.executeUpdate("INSERT INTO person_ordinance_status SELECT * FROM imported.person_ordinance_status");
+                    copySharedColumns(connection, "person_ordinance_status");
                 }
 
                 connection.commit();
@@ -159,6 +163,41 @@ public class BackupService {
                 return rs.next();
             }
         }
+    }
+
+    private void copySharedColumns(Connection connection, String tableName) throws SQLException {
+        List<String> mainColumns = getColumnNames(connection, "main", tableName);
+        Set<String> importedColumns = new HashSet<>(getColumnNames(connection, "imported", tableName));
+        List<String> sharedColumns = new ArrayList<>();
+
+        for (String column : mainColumns) {
+            if (importedColumns.contains(column)) {
+                sharedColumns.add(column);
+            }
+        }
+
+        if (sharedColumns.isEmpty()) {
+            throw new IllegalArgumentException("The backup file does not contain compatible columns for table " + tableName + ".");
+        }
+
+        String joinedColumns = String.join(", ", sharedColumns);
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate(
+                    "INSERT INTO " + tableName + " (" + joinedColumns + ") SELECT " + joinedColumns + " FROM imported." + tableName
+            );
+        }
+    }
+
+    private List<String> getColumnNames(Connection connection, String schemaName, String tableName) throws SQLException {
+        List<String> columns = new ArrayList<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("PRAGMA " + schemaName + ".table_info(" + tableName + ")")) {
+
+            while (rs.next()) {
+                columns.add(rs.getString("name"));
+            }
+        }
+        return columns;
     }
 
     private String sqlStringLiteral(String raw) {

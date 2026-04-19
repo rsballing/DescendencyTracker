@@ -176,12 +176,12 @@ class RelationshipServiceTest {
         }
 
         @Override
-        public SpouseLink addSpouse(long personAId, long personBId, String marriageDateText, String marriageNotes, OrdinanceStatus sealingToSpouseStatus, String sealingStatusDate, String sealingNotes) {
+        public SpouseLink addSpouse(long personAId, long personBId, String marriageDateText, String marriageNotes, OrdinanceStatus sealingToSpouseStatus, boolean sealedToSpouseReserved, String sealingStatusDate, String sealingNotes) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public SpouseLink updateSpouse(long spouseLinkId, long personAId, long personBId, String marriageDateText, String marriageNotes, OrdinanceStatus sealingToSpouseStatus, String sealingStatusDate, String sealingNotes) {
+        public SpouseLink updateSpouse(long spouseLinkId, long personAId, long personBId, String marriageDateText, String marriageNotes, OrdinanceStatus sealingToSpouseStatus, boolean sealedToSpouseReserved, String sealingStatusDate, String sealingNotes) {
             throw new UnsupportedOperationException();
         }
 

@@ -43,6 +43,8 @@ public class SqlitePersonRepository implements PersonRepository {
                    reviewed_status,
                    notes,
                    is_root,
+                   confirmed_no_children,
+                   confirmed_no_spouse,
                    is_deleted,
                    created_at,
                    updated_at,
@@ -89,6 +91,8 @@ public class SqlitePersonRepository implements PersonRepository {
                    reviewed_status,
                    notes,
                    is_root,
+                   confirmed_no_children,
+                   confirmed_no_spouse,
                    is_deleted,
                    created_at,
                    updated_at,
@@ -133,6 +137,8 @@ public class SqlitePersonRepository implements PersonRepository {
                    reviewed_status,
                    notes,
                    is_root,
+                   confirmed_no_children,
+                   confirmed_no_spouse,
                    is_deleted,
                    created_at,
                    updated_at,
@@ -257,13 +263,15 @@ public class SqlitePersonRepository implements PersonRepository {
                 reviewed_status,
                 notes,
                 is_root,
+                confirmed_no_children,
+                confirmed_no_spouse,
                 is_deleted,
                 created_at,
                 updated_at,
                 version,
                 sync_status,
                 last_synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
         String now = Instant.now().toString();
@@ -290,12 +298,14 @@ public class SqlitePersonRepository implements PersonRepository {
             statement.setString(12, person.getReviewedStatus().name());
             statement.setString(13, person.getNotes());
             statement.setInt(14, person.isRoot() ? 1 : 0);
-            statement.setInt(15, person.isDeleted() ? 1 : 0);
-            statement.setString(16, now);
-            statement.setString(17, now);
-            statement.setInt(18, Math.max(1, person.getVersion()));
-            statement.setString(19, safeSyncStatus(person.getSyncStatus()).name());
-            statement.setString(20, person.getLastSyncedAt());
+            statement.setInt(15, person.isConfirmedNoChildren() ? 1 : 0);
+            statement.setInt(16, person.isConfirmedNoSpouse() ? 1 : 0);
+            statement.setInt(17, person.isDeleted() ? 1 : 0);
+            statement.setString(18, now);
+            statement.setString(19, now);
+            statement.setInt(20, Math.max(1, person.getVersion()));
+            statement.setString(21, safeSyncStatus(person.getSyncStatus()).name());
+            statement.setString(22, person.getLastSyncedAt());
 
             statement.executeUpdate();
 
@@ -328,6 +338,8 @@ public class SqlitePersonRepository implements PersonRepository {
                 reviewed_status = ?,
                 notes = ?,
                 is_root = ?,
+                confirmed_no_children = ?,
+                confirmed_no_spouse = ?,
                 is_deleted = ?,
                 version = version + 1,
                 sync_status = 'LOCAL_ONLY',
@@ -352,9 +364,11 @@ public class SqlitePersonRepository implements PersonRepository {
             statement.setString(11, person.getReviewedStatus().name());
             statement.setString(12, person.getNotes());
             statement.setInt(13, person.isRoot() ? 1 : 0);
-            statement.setInt(14, person.isDeleted() ? 1 : 0);
-            statement.setString(15, Instant.now().toString());
-            statement.setLong(16, person.getPersonId());
+            statement.setInt(14, person.isConfirmedNoChildren() ? 1 : 0);
+            statement.setInt(15, person.isConfirmedNoSpouse() ? 1 : 0);
+            statement.setInt(16, person.isDeleted() ? 1 : 0);
+            statement.setString(17, Instant.now().toString());
+            statement.setLong(18, person.getPersonId());
 
             int updated = statement.executeUpdate();
             if (updated != 1) {
@@ -392,6 +406,8 @@ public class SqlitePersonRepository implements PersonRepository {
         person.setReviewedStatus(ReviewedStatus.valueOf(rs.getString("reviewed_status")));
         person.setNotes(rs.getString("notes"));
         person.setRoot(rs.getInt("is_root") == 1);
+        person.setConfirmedNoChildren(rs.getInt("confirmed_no_children") == 1);
+        person.setConfirmedNoSpouse(rs.getInt("confirmed_no_spouse") == 1);
         person.setDeleted(rs.getInt("is_deleted") == 1);
         person.setCreatedAt(rs.getString("created_at"));
         person.setUpdatedAt(rs.getString("updated_at"));

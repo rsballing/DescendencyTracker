@@ -12,6 +12,13 @@ public class WorkQueueRow {
     private final int parentCount;
     private final int childCount;
     private final int spouseCount;
+    private final boolean hasOpenOrdinances;
+    private final boolean hasReservedOrdinances;
+    private final boolean hasConnectedParents;
+    private final boolean hasConnectedChildren;
+    private final boolean hasConnectedSpouses;
+    private final boolean confirmedNoChildren;
+    private final boolean confirmedNoSpouse;
 
     public WorkQueueRow(
             Long personId,
@@ -22,7 +29,14 @@ public class WorkQueueRow {
             String reason,
             int parentCount,
             int childCount,
-            int spouseCount
+            int spouseCount,
+            boolean hasOpenOrdinances,
+            boolean hasReservedOrdinances,
+            boolean hasConnectedParents,
+            boolean hasConnectedChildren,
+            boolean hasConnectedSpouses,
+            boolean confirmedNoChildren,
+            boolean confirmedNoSpouse
     ) {
         this.personId = personId;
         this.displayName = displayName;
@@ -33,6 +47,13 @@ public class WorkQueueRow {
         this.parentCount = parentCount;
         this.childCount = childCount;
         this.spouseCount = spouseCount;
+        this.hasOpenOrdinances = hasOpenOrdinances;
+        this.hasReservedOrdinances = hasReservedOrdinances;
+        this.hasConnectedParents = hasConnectedParents;
+        this.hasConnectedChildren = hasConnectedChildren;
+        this.hasConnectedSpouses = hasConnectedSpouses;
+        this.confirmedNoChildren = confirmedNoChildren;
+        this.confirmedNoSpouse = confirmedNoSpouse;
     }
 
     public Long getPersonId() {
@@ -69,5 +90,33 @@ public class WorkQueueRow {
 
     public int getSpouseCount() {
         return spouseCount;
+    }
+
+    public boolean hasOpenOrdinances() {
+        return hasOpenOrdinances;
+    }
+
+    public boolean hasReservedOrdinances() {
+        return hasReservedOrdinances;
+    }
+
+    public boolean hasConnectedParents() {
+        return hasConnectedParents;
+    }
+
+    public boolean hasConnectedChildren() {
+        return hasConnectedChildren;
+    }
+
+    public boolean hasConnectedSpouses() {
+        return hasConnectedSpouses;
+    }
+
+    public boolean isConfirmedNoChildren() {
+        return confirmedNoChildren;
+    }
+
+    public boolean isConfirmedNoSpouse() {
+        return confirmedNoSpouse;
     }
 }

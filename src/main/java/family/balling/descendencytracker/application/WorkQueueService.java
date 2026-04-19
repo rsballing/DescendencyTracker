@@ -35,6 +35,10 @@ public class WorkQueueService {
         }
 
         for (Person person : allPeople) {
+            if (person == null || person.getPersonId() == null || person.isLiving()) {
+                continue;
+            }
+
             PersonOrdinanceStatus ordinanceStatus = ordinanceService.getOrCreateForPerson(person.getPersonId());
             List<ParentChildLink> parents = relationshipService.getParentsForPerson(person.getPersonId());
             List<ParentChildLink> children = relationshipService.getChildrenForPerson(person.getPersonId());
@@ -56,22 +60,31 @@ public class WorkQueueService {
                             .thenComparing(row -> row.getRelatedPersonName() == null ? "" : row.getRelatedPersonName()))
                     .orElse(null);
 
-            if (bestRow == null) {
-                continue;
-            }
-
-            String triggerLabel = buildTriggerLabel(bestRow);
+            boolean hasConnectedParents = !parents.isEmpty();
+            boolean hasConnectedChildren = !children.isEmpty();
+            boolean hasConnectedSpouses = !spouses.isEmpty();
 
             rows.add(new WorkQueueRow(
                     person.getPersonId(),
                     person.getDisplayName(),
                     person.getFsPid(),
-                    bestRow.getSuggestedStatus(),
-                    triggerLabel,
-                    bestRow.getReason(),
+                    bestRow == null ? null : bestRow.getSuggestedStatus(),
+                    bestRow == null
+                            ? buildFallbackTriggerLabel(person, parents, children, spouses)
+                            : buildTriggerLabel(bestRow),
+                    bestRow == null
+                            ? buildFallbackReason(person, parents, children, spouses)
+                            : bestRow.getReason(),
                     parents.size(),
                     children.size(),
-                    spouses.size()
+                    spouses.size(),
+                    dashboard.stream().anyMatch(row -> row.getSuggestedStatus() == OrdinanceStatus.OPEN),
+                    hasReservedOrdinances(ordinanceStatus, spouses),
+                    hasConnectedParents,
+                    hasConnectedChildren,
+                    hasConnectedSpouses,
+                    person.isConfirmedNoChildren(),
+                    person.isConfirmedNoSpouse()
             ));
         }
 
@@ -123,6 +136,66 @@ public class WorkQueueService {
         if (related == null || related.isBlank()) {
             return row.getOrdinanceName();
         }
-        return row.getOrdinanceName() + " — " + related;
+        return row.getOrdinanceName() + " - " + related;
+    }
+
+    private boolean hasReservedOrdinances(PersonOrdinanceStatus ordinanceStatus, List<SpouseLink> spouses) {
+        if (ordinanceStatus.isBaptismReserved()
+                || ordinanceStatus.isConfirmationReserved()
+                || ordinanceStatus.isInitiatoryReserved()
+                || ordinanceStatus.isEndowmentReserved()
+                || ordinanceStatus.isSealedToParentsReserved()) {
+            return true;
+        }
+
+        return spouses.stream().anyMatch(SpouseLink::isSealedToSpouseReserved);
+    }
+
+    private String buildFallbackTriggerLabel(
+            Person person,
+            List<ParentChildLink> parents,
+            List<ParentChildLink> children,
+            List<SpouseLink> spouses
+    ) {
+        if (person.isConfirmedNoSpouse() && spouses.isEmpty()) {
+            return "Confirmed no spouse";
+        }
+        if (person.isConfirmedNoChildren() && children.isEmpty()) {
+            return "Confirmed no children";
+        }
+        if (spouses.isEmpty()) {
+            return "Missing spouse connection";
+        }
+        if (children.isEmpty()) {
+            return "Missing child connection";
+        }
+        if (parents.isEmpty()) {
+            return "Missing parent connection";
+        }
+        return "No current trigger";
+    }
+
+    private String buildFallbackReason(
+            Person person,
+            List<ParentChildLink> parents,
+            List<ParentChildLink> children,
+            List<SpouseLink> spouses
+    ) {
+        if (person.isConfirmedNoSpouse() && spouses.isEmpty()) {
+            return "Spouse absence has been explicitly confirmed.";
+        }
+        if (person.isConfirmedNoChildren() && children.isEmpty()) {
+            return "Child absence has been explicitly confirmed.";
+        }
+        if (spouses.isEmpty()) {
+            return "No connected spouse relationship is recorded.";
+        }
+        if (children.isEmpty()) {
+            return "No connected child relationship is recorded.";
+        }
+        if (parents.isEmpty()) {
+            return "No connected parent relationship is recorded.";
+        }
+        return "No open or unresolved ordinance work is currently flagged.";
     }
 }

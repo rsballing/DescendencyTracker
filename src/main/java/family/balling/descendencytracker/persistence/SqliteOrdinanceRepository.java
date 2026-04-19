@@ -28,6 +28,11 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
                    initiatory_status,
                    endowment_status,
                    sealed_to_parents_status,
+                   baptism_reserved,
+                   confirmation_reserved,
+                   initiatory_reserved,
+                   endowment_reserved,
+                   sealed_to_parents_reserved,
                    ordinance_notes,
                    updated_at,
                    version,
@@ -63,18 +68,28 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
                 initiatory_status,
                 endowment_status,
                 sealed_to_parents_status,
+                baptism_reserved,
+                confirmation_reserved,
+                initiatory_reserved,
+                endowment_reserved,
+                sealed_to_parents_reserved,
                 ordinance_notes,
                 updated_at,
                 version,
                 sync_status,
                 last_synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(person_id) DO UPDATE SET
                 baptism_status = excluded.baptism_status,
                 confirmation_status = excluded.confirmation_status,
                 initiatory_status = excluded.initiatory_status,
                 endowment_status = excluded.endowment_status,
                 sealed_to_parents_status = excluded.sealed_to_parents_status,
+                baptism_reserved = excluded.baptism_reserved,
+                confirmation_reserved = excluded.confirmation_reserved,
+                initiatory_reserved = excluded.initiatory_reserved,
+                endowment_reserved = excluded.endowment_reserved,
+                sealed_to_parents_reserved = excluded.sealed_to_parents_reserved,
                 ordinance_notes = excluded.ordinance_notes,
                 updated_at = excluded.updated_at,
                 version = person_ordinance_status.version + 1,
@@ -93,11 +108,16 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
             statement.setString(4, status.getInitiatoryStatus().name());
             statement.setString(5, status.getEndowmentStatus().name());
             statement.setString(6, status.getSealedToParentsStatus().name());
-            statement.setString(7, status.getOrdinanceNotes());
-            statement.setString(8, now);
-            statement.setInt(9, Math.max(1, status.getVersion()));
-            statement.setString(10, safeSyncStatus(status.getSyncStatus()).name());
-            statement.setString(11, status.getLastSyncedAt());
+            statement.setInt(7, status.isBaptismReserved() ? 1 : 0);
+            statement.setInt(8, status.isConfirmationReserved() ? 1 : 0);
+            statement.setInt(9, status.isInitiatoryReserved() ? 1 : 0);
+            statement.setInt(10, status.isEndowmentReserved() ? 1 : 0);
+            statement.setInt(11, status.isSealedToParentsReserved() ? 1 : 0);
+            statement.setString(12, status.getOrdinanceNotes());
+            statement.setString(13, now);
+            statement.setInt(14, Math.max(1, status.getVersion()));
+            statement.setString(15, safeSyncStatus(status.getSyncStatus()).name());
+            statement.setString(16, status.getLastSyncedAt());
 
             statement.executeUpdate();
 
@@ -115,6 +135,11 @@ public class SqliteOrdinanceRepository implements OrdinanceRepository {
         status.setInitiatoryStatus(readStatus(rs.getString("initiatory_status")));
         status.setEndowmentStatus(readStatus(rs.getString("endowment_status")));
         status.setSealedToParentsStatus(readStatus(rs.getString("sealed_to_parents_status")));
+        status.setBaptismReserved(rs.getInt("baptism_reserved") == 1);
+        status.setConfirmationReserved(rs.getInt("confirmation_reserved") == 1);
+        status.setInitiatoryReserved(rs.getInt("initiatory_reserved") == 1);
+        status.setEndowmentReserved(rs.getInt("endowment_reserved") == 1);
+        status.setSealedToParentsReserved(rs.getInt("sealed_to_parents_reserved") == 1);
         status.setOrdinanceNotes(rs.getString("ordinance_notes"));
         status.setUpdatedAt(rs.getString("updated_at"));
         status.setVersion(rs.getInt("version"));

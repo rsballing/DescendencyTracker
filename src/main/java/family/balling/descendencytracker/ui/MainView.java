@@ -131,8 +131,7 @@ public class MainView extends BorderPane {
     private final ComboBox<String> dataActionsComboBox = new ComboBox<>();
 
     private final TextField workQueueSearchField = new TextField();
-    private final CheckBox workQueueActionableOnlyCheckBox = new CheckBox("Open/Soon only");
-    private final ComboBox<String> workQueueBucketFilterCombo = new ComboBox<>();
+    private final ComboBox<String> workQueueAttributeFilterCombo = new ComboBox<>();
     private final Label summaryPreferredNameValue = new Label();
     private final Label summaryFsPidValue = new Label();
     private final Label summaryRootValue = new Label();
@@ -311,23 +310,16 @@ public class MainView extends BorderPane {
     }
 
     private VBox buildWorkQueueTabContent() {
-        Button openSelectedButton = new Button("Open Selected Person");
-        Button refreshQueueButton = new Button("Refresh Queue");
         Button clearQueueFiltersButton = new Button("Clear Queue Filters");
 
-        openSelectedButton.setOnAction(event -> openSelectedWorkQueuePerson());
-        refreshQueueButton.setOnAction(event -> refreshWorkQueue());
         clearQueueFiltersButton.setOnAction(event -> clearWorkQueueFilters());
 
         ToolBar toolbar = new ToolBar(
-                openSelectedButton,
-                refreshQueueButton,
                 new Label("Find"),
                 workQueueSearchField,
                 clearQueueFiltersButton,
-                workQueueActionableOnlyCheckBox,
-                new Label("Bucket"),
-                workQueueBucketFilterCombo
+                new Label("Flag"),
+                workQueueAttributeFilterCombo
         );
         toolbar.getStyleClass().add("section-toolbar");
 
@@ -342,6 +334,7 @@ public class MainView extends BorderPane {
         dataActionsComboBox.getItems().setAll(
                 DATA_ACTIONS_PLACEHOLDER,
                 "Reload Data",
+                "Refresh Queue",
                 "Export Backup",
                 "Import Backup"
         );
@@ -358,6 +351,7 @@ public class MainView extends BorderPane {
             try {
                 switch (newValue) {
                     case "Reload Data" -> refreshPeople();
+                    case "Refresh Queue" -> refreshWorkQueue();
                     case "Export Backup" -> exportBackup();
                     case "Import Backup" -> importBackup();
                     default -> {
@@ -525,47 +519,54 @@ public class MainView extends BorderPane {
 
     private void configureWorkQueueControls() {
         workQueueSearchField.setPromptText("Search queue...");
-        workQueueSearchField.setPrefWidth(260);
+        workQueueSearchField.setPrefWidth(130);
         workQueueSearchField.textProperty().addListener((obs, oldValue, newValue) -> applyWorkQueueFilter());
 
-        workQueueActionableOnlyCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> applyWorkQueueFilter());
-
-        workQueueBucketFilterCombo.getItems().setAll(
+        workQueueAttributeFilterCombo.getItems().setAll(
                 "All",
-                "OPEN",
-                "SOON_1Y",
-                "SOON_2Y",
-                "SOON_5Y",
-                "SOON_10Y",
-                "UNKNOWN",
-                "BLOCKED_110"
+                "Open ordinances",
+                "Reserved ordinances",
+                "Has connected parents",
+                "Has connected children",
+                "Has connected spouses",
+                "Confirmed no children",
+                "Confirmed no spouse",
+                "Missing spouse connection",
+                "Missing child connection"
         );
-        workQueueBucketFilterCombo.setValue("All");
-        workQueueBucketFilterCombo.valueProperty().addListener((obs, oldValue, newValue) -> applyWorkQueueFilter());
+        workQueueAttributeFilterCombo.setValue("All");
+        workQueueAttributeFilterCombo.valueProperty().addListener((obs, oldValue, newValue) -> applyWorkQueueFilter());
     }
 
     private void clearWorkQueueFilters() {
         workQueueSearchField.clear();
-        workQueueActionableOnlyCheckBox.setSelected(false);
-        workQueueBucketFilterCombo.setValue("All");
+        workQueueAttributeFilterCombo.setValue("All");
     }
 
     private void applyWorkQueueFilter() {
         String searchText = workQueueSearchField.getText() == null ? "" : workQueueSearchField.getText().trim().toLowerCase();
-        boolean actionableOnly = workQueueActionableOnlyCheckBox.isSelected();
-        String bucketFilter = workQueueBucketFilterCombo.getValue();
+        String attributeFilter = workQueueAttributeFilterCombo.getValue();
 
         filteredWorkQueueRows.setPredicate(row -> {
             if (row == null) {
                 return false;
             }
 
-            if (actionableOnly && !workQueueService.isActionable(row.getQueueBucket())) {
-                return false;
-            }
+            if (attributeFilter != null && !"All".equals(attributeFilter)) {
+                boolean matchesAttribute = switch (attributeFilter) {
+                    case "Open ordinances" -> row.hasOpenOrdinances();
+                    case "Reserved ordinances" -> row.hasReservedOrdinances();
+                    case "Has connected parents" -> row.hasConnectedParents();
+                    case "Has connected children" -> row.hasConnectedChildren();
+                    case "Has connected spouses" -> row.hasConnectedSpouses();
+                    case "Confirmed no children" -> row.isConfirmedNoChildren();
+                    case "Confirmed no spouse" -> row.isConfirmedNoSpouse();
+                    case "Missing spouse connection" -> !row.hasConnectedSpouses() && !row.isConfirmedNoSpouse();
+                    case "Missing child connection" -> !row.hasConnectedChildren() && !row.isConfirmedNoChildren();
+                    default -> true;
+                };
 
-            if (bucketFilter != null && !"All".equals(bucketFilter)) {
-                if (row.getQueueBucket() == null || !bucketFilter.equals(row.getQueueBucket().name())) {
+                if (!matchesAttribute) {
                     return false;
                 }
             }
@@ -1029,22 +1030,22 @@ public class MainView extends BorderPane {
         workQueueTable.setRowFactory(table -> {
             TableRow<WorkQueueRow> row = new TableRow<>();
             row.setOnMouseClicked(event -> {
-                if (event.getClickCount() == 2 && !row.isEmpty()) {
-                    openSelectedWorkQueuePerson();
+                if (row.isEmpty() || row.getItem() == null || row.getItem().getPersonId() == null) {
+                    return;
+                }
+
+                Long personId = row.getItem().getPersonId();
+                selectPersonInTable(personId);
+
+                if (event.getClickCount() == 2) {
+                    Person person = findPersonById(personId);
+                    if (person != null) {
+                        editPerson(person);
+                    }
                 }
             });
             return row;
         });
-    }
-
-    private void openSelectedWorkQueuePerson() {
-        WorkQueueRow selected = workQueueTable.getSelectionModel().getSelectedItem();
-        if (selected == null || selected.getPersonId() == null) {
-            showWarning("Please select a work queue row.");
-            return;
-        }
-
-        selectPersonInTable(selected.getPersonId());
     }
 
     private void openSelectedAncestorLine() {
@@ -2416,6 +2417,7 @@ public class MainView extends BorderPane {
                         input.getMarriageDateText(),
                         input.getMarriageNotes(),
                         input.getSealingStatus(),
+                        input.isSealingReserved(),
                         input.getSealingStatusDate(),
                         input.getSealingNotes()
                 );
@@ -2458,6 +2460,7 @@ public class MainView extends BorderPane {
                         input.getMarriageDateText(),
                         input.getMarriageNotes(),
                         input.getSealingStatus(),
+                        input.isSealingReserved(),
                         input.getSealingStatusDate(),
                         input.getSealingNotes()
                 );
@@ -2588,6 +2591,7 @@ public class MainView extends BorderPane {
                 spouseLink.getMarriageDateText(),
                 spouseLink.getMarriageNotes(),
                 status,
+                spouseLink.isSealedToSpouseReserved(),
                 spouseLink.getSealingStatusDate(),
                 spouseLink.getSealingNotes()
         );
@@ -2614,10 +2618,10 @@ public class MainView extends BorderPane {
         try {
             PersonOrdinanceStatus status = ordinancePane.buildPersonOrdinanceStatus(selected.getPersonId());
             ordinanceService.save(status);
-            Map<Long, OrdinanceStatus> spouseSelections = ordinancePane.getSpouseSealingSelections();
+            Map<Long, OrdinanceStatusChoice> spouseSelections = ordinancePane.getSpouseSealingSelections();
             for (SpouseLink spouseLink : relationshipService.getSpousesForPerson(selected.getPersonId())) {
-                OrdinanceStatus spouseStatus = spouseSelections.get(spouseLink.getSpouseLinkId());
-                if (spouseStatus == null) {
+                OrdinanceStatusChoice spouseSelection = spouseSelections.get(spouseLink.getSpouseLinkId());
+                if (spouseSelection == null) {
                     continue;
                 }
 
@@ -2627,7 +2631,8 @@ public class MainView extends BorderPane {
                         spouseLink.getPersonBId(),
                         spouseLink.getMarriageDateText(),
                         spouseLink.getMarriageNotes(),
-                        spouseStatus,
+                        spouseSelection.status(),
+                        spouseSelection.isReserved(),
                         spouseLink.getSealingStatusDate(),
                         spouseLink.getSealingNotes()
                 );
@@ -2855,6 +2860,10 @@ public class MainView extends BorderPane {
         }
 
         StringBuilder builder = new StringBuilder();
+        List<ParentChildLink> parents = relationshipService.getParentsForPerson(person.getPersonId());
+        List<ParentChildLink> children = relationshipService.getChildrenForPerson(person.getPersonId());
+        List<SpouseLink> spouses = relationshipService.getSpousesForPerson(person.getPersonId());
+        PersonOrdinanceStatus ordinanceStatus = ordinanceService.getOrCreateForPerson(person.getPersonId());
         builder.append("ID: ").append(person.getPersonId()).append('\n');
         builder.append("UUID: ").append(nullSafe(person.getStableUuid())).append('\n');
         builder.append("FamilySearch PID: ").append(nullSafe(person.getFsPid())).append('\n');
@@ -2869,12 +2878,43 @@ public class MainView extends BorderPane {
         builder.append("Death Precision: ").append(person.getDeathDatePrecision()).append('\n');
         builder.append("Reviewed Status: ").append(person.getReviewedStatus()).append('\n');
         builder.append("Root Person: ").append(person.isRoot() ? "Yes" : "No").append('\n');
+        builder.append("Connected Parents: ").append(parents.isEmpty() ? "No" : "Yes (" + parents.size() + ")").append('\n');
+        builder.append("Connected Children: ").append(children.isEmpty() ? "No" : "Yes (" + children.size() + ")").append('\n');
+        builder.append("Connected Spouses: ").append(spouses.isEmpty() ? "No" : "Yes (" + spouses.size() + ")").append('\n');
+        builder.append("Confirmed No Children: ").append(person.isConfirmedNoChildren() ? "Yes" : "No").append('\n');
+        builder.append("Confirmed No Spouse: ").append(person.isConfirmedNoSpouse() ? "Yes" : "No").append('\n');
+        builder.append("Reserved Ordinances: ").append(buildReservedOrdinanceSummary(person, ordinanceStatus, spouses)).append('\n');
         builder.append("Created At: ").append(nullSafe(person.getCreatedAt())).append('\n');
         builder.append("Updated At: ").append(nullSafe(person.getUpdatedAt())).append('\n');
         builder.append('\n');
         builder.append("Notes:\n").append(nullSafe(person.getNotes()));
 
         detailArea.setText(builder.toString());
+    }
+
+    private String buildReservedOrdinanceSummary(Person person, PersonOrdinanceStatus ordinanceStatus, List<SpouseLink> spouses) {
+        List<String> reserved = FXCollections.observableArrayList();
+        if (ordinanceStatus.isBaptismReserved()) {
+            reserved.add("Baptism");
+        }
+        if (ordinanceStatus.isConfirmationReserved()) {
+            reserved.add("Confirmation");
+        }
+        if (ordinanceStatus.isInitiatoryReserved()) {
+            reserved.add("Initiatory");
+        }
+        if (ordinanceStatus.isEndowmentReserved()) {
+            reserved.add("Endowment");
+        }
+        if (ordinanceStatus.isSealedToParentsReserved()) {
+            reserved.add("Sealed to Parents");
+        }
+        for (SpouseLink spouse : spouses) {
+            if (spouse.isSealedToSpouseReserved()) {
+                reserved.add("Sealed to Spouse: " + nullSafe(spouse.getOtherPersonDisplayName(person.getPersonId())));
+            }
+        }
+        return reserved.isEmpty() ? "None" : String.join(", ", reserved);
     }
 
     private void updateStatus() {

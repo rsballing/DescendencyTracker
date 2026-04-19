@@ -115,6 +115,7 @@ public class RelationshipService {
             String marriageDateText,
             String marriageNotes,
             OrdinanceStatus sealingToSpouseStatus,
+            boolean sealedToSpouseReserved,
             String sealingStatusDate,
             String sealingNotes
     ) {
@@ -129,6 +130,7 @@ public class RelationshipService {
                 trimToNull(marriageDateText),
                 trimToNull(marriageNotes),
                 normalizeStatus(sealingToSpouseStatus),
+                sealedToSpouseReserved,
                 trimToNull(sealingStatusDate),
                 trimToNull(sealingNotes)
         );
@@ -141,6 +143,7 @@ public class RelationshipService {
             String marriageDateText,
             String marriageNotes,
             OrdinanceStatus sealingToSpouseStatus,
+            boolean sealedToSpouseReserved,
             String sealingStatusDate,
             String sealingNotes
     ) {
@@ -156,6 +159,7 @@ public class RelationshipService {
                 trimToNull(marriageDateText),
                 trimToNull(marriageNotes),
                 normalizeStatus(sealingToSpouseStatus),
+                sealedToSpouseReserved,
                 trimToNull(sealingStatusDate),
                 trimToNull(sealingNotes)
         );

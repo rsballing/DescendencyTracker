@@ -13,6 +13,7 @@ public class SpouseLink {
     private String marriageDateText;
     private String marriageNotes;
     private OrdinanceStatus sealingToSpouseStatus = OrdinanceStatus.UNKNOWN;
+    private boolean sealedToSpouseReserved;
     private String sealingStatusDate;
     private String sealingNotes;
     private boolean deleted;
@@ -92,6 +93,14 @@ public class SpouseLink {
 
     public void setSealingToSpouseStatus(OrdinanceStatus sealingToSpouseStatus) {
         this.sealingToSpouseStatus = sealingToSpouseStatus;
+    }
+
+    public boolean isSealedToSpouseReserved() {
+        return sealedToSpouseReserved;
+    }
+
+    public void setSealedToSpouseReserved(boolean sealedToSpouseReserved) {
+        this.sealedToSpouseReserved = sealedToSpouseReserved;
     }
 
     public String getSealingStatusDate() {
