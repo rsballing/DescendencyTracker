@@ -66,6 +66,7 @@ public class SpouseLinkDialog extends Dialog<SpouseLinkDialog.Result> {
 
         getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         getDialogPane().setContent(buildForm());
+        DialogThemeSupport.apply(this);
 
         spouseComboBox.setPrefWidth(320);
         PersonSelectionSupport.configurePersonAutocomplete(

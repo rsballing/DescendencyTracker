@@ -19,6 +19,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class WorkQueueServiceTest {
     @Test
@@ -53,6 +54,8 @@ class WorkQueueServiceTest {
         assertTrue(row.hasReservedOrdinances());
         assertTrue(row.hasConnectedSpouses());
         assertFalse(row.isConfirmedNoChildren());
+        assertFalse(row.isNonBloodRelative());
+        assertFalse(row.isNoMoreFindable());
     }
 
     @Test
@@ -62,6 +65,8 @@ class WorkQueueServiceTest {
         person.setPreferredName("Solo");
         person.setConfirmedNoChildren(true);
         person.setConfirmedNoSpouse(true);
+        person.setNonBloodRelative(true);
+        person.setNoMoreFindable(true);
 
         InMemoryPersonRepository personRepository = new InMemoryPersonRepository(List.of(person));
         InMemoryRelationshipRepository relationshipRepository = new InMemoryRelationshipRepository();
@@ -78,6 +83,90 @@ class WorkQueueServiceTest {
         assertTrue(row.isConfirmedNoSpouse());
         assertFalse(row.hasConnectedChildren());
         assertFalse(row.hasConnectedSpouses());
+        assertTrue(row.isNonBloodRelative());
+        assertTrue(row.isNoMoreFindable());
+    }
+
+    @Test
+    void buildWorkQueueFlagsPeopleWithFewerThanTwoParents() {
+        Person parent = new Person();
+        parent.setPersonId(1L);
+        parent.setPreferredName("Parent");
+
+        Person child = new Person();
+        child.setPersonId(2L);
+        child.setPreferredName("Child");
+
+        InMemoryPersonRepository personRepository = new InMemoryPersonRepository(List.of(parent, child));
+        InMemoryRelationshipRepository relationshipRepository = new InMemoryRelationshipRepository();
+        relationshipRepository.addParentChildLink(1L, 2L);
+
+        WorkQueueService service = new WorkQueueService(
+                new RelationshipService(personRepository, relationshipRepository),
+                new OrdinanceService(new InMemoryOrdinanceRepository(Map.of())),
+                new OrdinanceEligibilityService()
+        );
+
+        WorkQueueRow row = service.buildWorkQueue(List.of(parent, child)).stream()
+                .filter(candidate -> Long.valueOf(2L).equals(candidate.getPersonId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(row.hasConnectedParents());
+        assertTrue(row.hasFewerThanTwoParents());
+        assertEquals(1, row.getParentCount());
+    }
+
+    @Test
+    void buildWorkQueueTracksOpenAndBorn110FlagsSeparately() {
+        Person person = new Person();
+        person.setPersonId(1L);
+        person.setPreferredName("Born 110 Example");
+        person.setBirthDateText("1 Jan 1900");
+        person.setDeathDateText("1 Jan 1910");
+
+        InMemoryPersonRepository personRepository = new InMemoryPersonRepository(List.of(person));
+        InMemoryRelationshipRepository relationshipRepository = new InMemoryRelationshipRepository();
+
+        WorkQueueService service = new WorkQueueService(
+                new RelationshipService(personRepository, relationshipRepository),
+                new OrdinanceService(new InMemoryOrdinanceRepository(Map.of())),
+                new OrdinanceEligibilityService()
+        );
+
+        WorkQueueRow row = service.buildWorkQueue(List.of(person)).getFirst();
+
+        assertFalse(row.hasOpenOrdinances());
+        assertTrue(row.isBornMoreThan110YearsAgo());
+        assertEquals(OrdinanceStatus.OPEN, row.getQueueBucket());
+    }
+
+    @Test
+    void buildWorkQueueUsesRecordedOpenStatusForRecentDeathYear() {
+        Person person = new Person();
+        person.setPersonId(1L);
+        person.setPreferredName("Peggy Example");
+        person.setDeathDateText("16 Jul 2023");
+
+        PersonOrdinanceStatus ordinanceStatus = new PersonOrdinanceStatus();
+        ordinanceStatus.setPersonId(1L);
+        ordinanceStatus.setInitiatoryStatus(OrdinanceStatus.OPEN);
+        ordinanceStatus.setEndowmentStatus(OrdinanceStatus.OPEN);
+
+        InMemoryPersonRepository personRepository = new InMemoryPersonRepository(List.of(person));
+        InMemoryRelationshipRepository relationshipRepository = new InMemoryRelationshipRepository();
+
+        WorkQueueService service = new WorkQueueService(
+                new RelationshipService(personRepository, relationshipRepository),
+                new OrdinanceService(new InMemoryOrdinanceRepository(Map.of(1L, ordinanceStatus))),
+                new OrdinanceEligibilityService()
+        );
+
+        WorkQueueRow row = service.buildWorkQueue(List.of(person)).getFirst();
+
+        assertTrue(row.hasOpenOrdinances());
+        assertEquals(OrdinanceStatus.OPEN, row.getQueueBucket());
+        assertEquals("Recorded ordinance status is marked open.", row.getReason());
     }
 
     private static class InMemoryPersonRepository implements PersonRepository {
@@ -132,6 +221,14 @@ class WorkQueueServiceTest {
             link.setPersonBDisplayName("Spouse");
             link.setSealedToSpouseReserved(reserved);
             spouseLinks.add(link);
+        }
+
+        void addParentChildLink(long parentPersonId, long childPersonId) {
+            ParentChildLink link = new ParentChildLink();
+            link.setLinkId((long) (parentChildLinks.size() + 1));
+            link.setParentPersonId(parentPersonId);
+            link.setChildPersonId(childPersonId);
+            parentChildLinks.add(link);
         }
 
         @Override

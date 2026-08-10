@@ -1,5 +1,6 @@
 package family.balling.descendencytracker.ui;
 
+import javafx.application.Platform;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextFormatter;
 import javafx.scene.layout.HBox;
@@ -18,6 +19,14 @@ final class FsPidFields {
         suffixField.setPromptText("XXX");
         prefixField.setTextFormatter(createFormatter(4));
         suffixField.setTextFormatter(createFormatter(3));
+        prefixField.textProperty().addListener((obs, oldValue, newValue) -> {
+            if (prefixField.isFocused() && newValue != null && newValue.length() == 4) {
+                Platform.runLater(() -> {
+                    suffixField.requestFocus();
+                    suffixField.selectAll();
+                });
+            }
+        });
         container.getChildren().addAll(prefixField, suffixField);
     }
 

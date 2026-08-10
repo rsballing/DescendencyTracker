@@ -11,6 +11,7 @@ import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.CheckBox;
@@ -19,13 +20,16 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -58,6 +62,8 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
     private final ComboBox<OrdinanceStatusChoice> sealedToParentsStatusComboBox = new ComboBox<>();
     private final CheckBox confirmedNoChildrenCheckBox = new CheckBox("Confirmed no children");
     private final CheckBox confirmedNoSpouseCheckBox = new CheckBox("Confirmed no spouse");
+    private final CheckBox nonBloodRelativeCheckBox = new CheckBox("Non-blood relative");
+    private final CheckBox noMoreFindableCheckBox = new CheckBox("No more findable");
     private final TextArea ordinanceNotesArea = new TextArea();
     private final PersonOrdinanceStatus existingOrdinanceStatus;
 
@@ -70,6 +76,7 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
 
         getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         getDialogPane().setContent(buildForm());
+        DialogThemeSupport.apply(this);
 
         configureControls();
         populateFields();
@@ -112,6 +119,8 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
             result.setNotes(DateTextSupport.clean(notesArea.getText()));
             result.setConfirmedNoChildren(confirmedNoChildrenCheckBox.isSelected());
             result.setConfirmedNoSpouse(confirmedNoSpouseCheckBox.isSelected());
+            result.setNonBloodRelative(nonBloodRelativeCheckBox.isSelected());
+            result.setNoMoreFindable(noMoreFindableCheckBox.isSelected());
 
             PersonOrdinanceStatus ordinanceStatus = existingOrdinanceStatus == null
                     ? new PersonOrdinanceStatus()
@@ -132,86 +141,156 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         });
     }
 
-    private GridPane buildForm() {
-        GridPane grid = new GridPane();
-        grid.setPadding(new Insets(15));
-        grid.setHgap(10);
-        grid.setVgap(10);
+    private VBox buildForm() {
+        preferredNameField.setPrefWidth(260);
+        fsPidFields.setPrefWidth(120);
+        givenNamesField.setPrefWidth(260);
+        surnameField.setPrefWidth(260);
+        birthDateField.setPrefWidth(220);
+        deathDateField.setPrefWidth(220);
+        birthPrecisionComboBox.setPrefWidth(180);
+        deathPrecisionComboBox.setPrefWidth(180);
+        reviewedStatusComboBox.setPrefWidth(220);
 
-        int row = 0;
+        Label heading = new Label(existingPerson == null ? "New Person" : nullSafe(existingPerson.getDisplayName()));
+        heading.getStyleClass().add("section-title");
+        Label subheading = new Label(existingPerson == null
+                ? "Start with identity and life details, then record ordinances."
+                : "Update the core record first, then review ordinances.");
+        subheading.getStyleClass().add("muted-text");
 
-        grid.add(new Label("Preferred Name"), 0, row);
-        grid.add(preferredNameField, 1, row++);
+        HBox identityRowOne = new HBox(12,
+                createFieldBox("Preferred Name", preferredNameField),
+                createFieldBox("FamilySearch PID", fsPidFields.getNode())
+        );
+        HBox.setHgrow(identityRowOne.getChildren().get(0), Priority.ALWAYS);
+        HBox.setHgrow(identityRowOne.getChildren().get(1), Priority.ALWAYS);
 
-        grid.add(new Label("FamilySearch PID"), 0, row);
-        grid.add(fsPidFields.getNode(), 1, row++);
+        HBox identityRowTwo = new HBox(12,
+                createFieldBox("Given Names", givenNamesField),
+                createFieldBox("Surname", surnameField)
+        );
+        HBox.setHgrow(identityRowTwo.getChildren().get(0), Priority.ALWAYS);
+        HBox.setHgrow(identityRowTwo.getChildren().get(1), Priority.ALWAYS);
 
-        grid.add(new Label("Given Names"), 0, row);
-        grid.add(givenNamesField, 1, row++);
+        HBox identityRowThree = new HBox(12,
+                createFieldBox("Sex", sexComboBox),
+                createFieldBox("Status", livingCheckBox)
+        );
+        HBox.setHgrow(identityRowThree.getChildren().get(0), Priority.ALWAYS);
+        HBox.setHgrow(identityRowThree.getChildren().get(1), Priority.ALWAYS);
 
-        grid.add(new Label("Surname"), 0, row);
-        grid.add(surnameField, 1, row++);
+        VBox identitySection = buildSectionBox(
+                heading,
+                subheading,
+                identityRowOne,
+                identityRowTwo,
+                identityRowThree
+        );
 
-        grid.add(new Label("Sex"), 0, row);
-        grid.add(sexComboBox, 1, row++);
+        HBox datesRowOne = new HBox(12,
+                createFieldBox("Birth Date", birthDateField),
+                createFieldBox("Birth Precision", birthPrecisionComboBox)
+        );
+        HBox.setHgrow(datesRowOne.getChildren().get(0), Priority.ALWAYS);
+        HBox.setHgrow(datesRowOne.getChildren().get(1), Priority.ALWAYS);
 
-        grid.add(new Label("Status"), 0, row);
-        grid.add(livingCheckBox, 1, row++);
+        HBox datesRowTwo = new HBox(12,
+                createFieldBox("Death Date", deathDateField),
+                createFieldBox("Death Precision", deathPrecisionComboBox)
+        );
+        HBox.setHgrow(datesRowTwo.getChildren().get(0), Priority.ALWAYS);
+        HBox.setHgrow(datesRowTwo.getChildren().get(1), Priority.ALWAYS);
 
-        grid.add(new Label("Birth Date"), 0, row);
-        grid.add(birthDateField, 1, row++);
+        VBox lifeSection = buildSectionBox(
+                datesRowOne,
+                datesRowTwo,
+                createFieldBox("Reviewed Status", reviewedStatusComboBox)
+        );
 
-        grid.add(new Label("Birth Precision"), 0, row);
-        grid.add(birthPrecisionComboBox, 1, row++);
+        HBox confirmationsRow = new HBox(12, confirmedNoChildrenCheckBox, confirmedNoSpouseCheckBox);
+        confirmationsRow.getStyleClass().add("detail-card");
+        HBox statusFlagsRow = new HBox(12, nonBloodRelativeCheckBox, noMoreFindableCheckBox);
+        statusFlagsRow.getStyleClass().add("detail-card");
 
-        grid.add(new Label("Death Date"), 0, row);
-        grid.add(deathDateField, 1, row++);
+        VBox relationshipSection = buildSectionBox(confirmationsRow, statusFlagsRow);
 
-        grid.add(new Label("Death Precision"), 0, row);
-        grid.add(deathPrecisionComboBox, 1, row++);
+        HBox ordinanceRowOne = new HBox(12,
+                createFieldBox("Baptism", baptismStatusComboBox),
+                createFieldBox("Confirmation", confirmationStatusComboBox)
+        );
+        HBox.setHgrow(ordinanceRowOne.getChildren().get(0), Priority.ALWAYS);
+        HBox.setHgrow(ordinanceRowOne.getChildren().get(1), Priority.ALWAYS);
 
-        grid.add(new Label("Reviewed Status"), 0, row);
-        grid.add(reviewedStatusComboBox, 1, row++);
+        HBox ordinanceRowTwo = new HBox(12,
+                createFieldBox("Initiatory", initiatoryStatusComboBox),
+                createFieldBox("Endowment", endowmentStatusComboBox)
+        );
+        HBox.setHgrow(ordinanceRowTwo.getChildren().get(0), Priority.ALWAYS);
+        HBox.setHgrow(ordinanceRowTwo.getChildren().get(1), Priority.ALWAYS);
 
-        grid.add(new Label("Baptism"), 0, row);
-        grid.add(baptismStatusComboBox, 1, row++);
+        VBox ordinanceSection = buildSectionBox(
+                ordinanceRowOne,
+                ordinanceRowTwo,
+                createFieldBox("Sealed to Parents", sealedToParentsStatusComboBox)
+        );
+        TitledPane ordinancesPane = buildSectionPane("Ordinances", ordinanceSection, true);
 
-        grid.add(new Label("Confirmation"), 0, row);
-        grid.add(confirmationStatusComboBox, 1, row++);
+        TitledPane identityPane = buildSectionPane("Identity", identitySection, true);
+        TitledPane lifePane = buildSectionPane("Life Details", lifeSection, true);
+        TitledPane relationshipPane = buildSectionPane("Relationship Status", relationshipSection, true);
+        Button addNotesButton = new Button("Add Notes");
+        addNotesButton.setOnAction(event -> showNotesDialog());
+        VBox notesActions = buildSectionBox(addNotesButton);
+        TitledPane notesPane = buildSectionPane("Notes", notesActions, true);
 
-        grid.add(new Label("Initiatory"), 0, row);
-        grid.add(initiatoryStatusComboBox, 1, row++);
+        VBox leftColumn = new VBox(10, lifePane, ordinancesPane);
+        VBox rightColumn = new VBox(10, relationshipPane, notesPane);
+        HBox.setHgrow(leftColumn, Priority.ALWAYS);
+        HBox.setHgrow(rightColumn, Priority.ALWAYS);
 
-        grid.add(new Label("Endowment"), 0, row);
-        grid.add(endowmentStatusComboBox, 1, row++);
+        HBox lowerRow = new HBox(10, leftColumn, rightColumn);
+        HBox.setHgrow(lowerRow.getChildren().get(0), Priority.ALWAYS);
+        HBox.setHgrow(lowerRow.getChildren().get(1), Priority.ALWAYS);
 
-        grid.add(new Label("Sealed to Parents"), 0, row);
-        grid.add(sealedToParentsStatusComboBox, 1, row++);
+        VBox content = new VBox(10, identityPane, lowerRow);
+        content.setPadding(new Insets(12));
+        content.getStyleClass().add("dialog-form-stack");
+        return content;
+    }
 
-        GridPane confirmationsGrid = new GridPane();
-        confirmationsGrid.setHgap(10);
-        confirmationsGrid.add(confirmedNoChildrenCheckBox, 0, 0);
-        confirmationsGrid.add(confirmedNoSpouseCheckBox, 1, 0);
-        grid.add(new Label("Relationship Confirmations"), 0, row);
-        grid.add(confirmationsGrid, 1, row++);
+    private TitledPane buildSectionPane(String title, Node content, boolean expanded) {
+        TitledPane pane = new TitledPane(title, content);
+        pane.getStyleClass().add("section-pane");
+        pane.setCollapsible(false);
+        pane.setExpanded(expanded);
+        return pane;
+    }
 
-        grid.add(new Label("Ordinance Notes"), 0, row);
-        grid.add(ordinanceNotesArea, 1, row++);
+    private VBox buildSectionBox(Node... nodes) {
+        VBox box = new VBox(10, nodes);
+        box.setPadding(new Insets(10));
+        box.getStyleClass().addAll("section-body", "dialog-section-body");
+        return box;
+    }
 
-        grid.add(new Label("Notes"), 0, row);
-        grid.add(notesArea, 1, row);
+    private VBox createFieldBox(String labelText, Node input) {
+        Label label = new Label(labelText);
+        label.getStyleClass().add("selected-person-prefix");
 
-        preferredNameField.setPrefWidth(320);
-        fsPidFields.setPrefWidth(156);
-        givenNamesField.setPrefWidth(320);
-        surnameField.setPrefWidth(320);
-        birthDateField.setPrefWidth(320);
-        deathDateField.setPrefWidth(320);
-
-        notesArea.setWrapText(true);
-        notesArea.setPrefRowCount(6);
-
-        return grid;
+        VBox box = new VBox(4, label, input);
+        box.getStyleClass().add("dialog-field-box");
+        VBox.setVgrow(input, Priority.NEVER);
+        if (input instanceof TextArea area) {
+            VBox.setVgrow(area, Priority.ALWAYS);
+        } else if (input instanceof TextField field) {
+            field.setMaxWidth(Double.MAX_VALUE);
+        } else if (input instanceof ComboBox<?> comboBox) {
+            comboBox.setMaxWidth(Double.MAX_VALUE);
+        } else if (input instanceof HBox hbox) {
+            HBox.setHgrow(hbox, Priority.ALWAYS);
+        }
+        return box;
     }
 
     private void configureControls() {
@@ -241,6 +320,9 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         sealedToParentsStatusComboBox.setValue(OrdinanceStatusChoice.of(OrdinanceStatus.UNKNOWN, false));
         confirmedNoChildrenCheckBox.setSelected(false);
         confirmedNoSpouseCheckBox.setSelected(false);
+        nonBloodRelativeCheckBox.setSelected(false);
+        noMoreFindableCheckBox.setSelected(false);
+        noMoreFindableCheckBox.setTooltip(new javafx.scene.control.Tooltip("Marks a likely incomplete person whose remaining information is no longer findable."));
 
         livingCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateLivingState());
         sexComboBox.addEventFilter(KeyEvent.KEY_PRESSED, this::handleSexShortcut);
@@ -253,8 +335,30 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         configureOrdinanceShortcut(endowmentStatusComboBox);
         configureOrdinanceShortcut(sealedToParentsStatusComboBox);
 
+        notesArea.setWrapText(true);
+        notesArea.setPrefRowCount(8);
         ordinanceNotesArea.setWrapText(true);
         ordinanceNotesArea.setPrefRowCount(4);
+    }
+
+    private void showNotesDialog() {
+        Dialog<String> dialog = new Dialog<>();
+        dialog.setTitle("Person Notes");
+        dialog.setHeaderText(existingPerson == null ? "Add general notes." : "Edit general notes for " + nullSafe(existingPerson.getDisplayName()) + ".");
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        TextArea dialogNotesArea = new TextArea(nullSafe(notesArea.getText()));
+        dialogNotesArea.setWrapText(true);
+        dialogNotesArea.setPrefRowCount(10);
+        dialogNotesArea.setPrefColumnCount(48);
+        dialog.getDialogPane().setContent(dialogNotesArea);
+        DialogThemeSupport.apply(dialog);
+
+        dialog.setResultConverter(buttonType -> buttonType == ButtonType.OK
+                ? dialogNotesArea.getText()
+                : null);
+
+        dialog.showAndWait().ifPresent(notesArea::setText);
     }
 
     private void configureSubmitShortcut() {
@@ -309,6 +413,8 @@ public class PersonEditorDialog extends Dialog<PersonEditorDialog.Result> {
         notesArea.setText(nullSafe(existingPerson.getNotes()));
         confirmedNoChildrenCheckBox.setSelected(existingPerson.isConfirmedNoChildren());
         confirmedNoSpouseCheckBox.setSelected(existingPerson.isConfirmedNoSpouse());
+        nonBloodRelativeCheckBox.setSelected(existingPerson.isNonBloodRelative());
+        noMoreFindableCheckBox.setSelected(existingPerson.isNoMoreFindable());
         if (existingOrdinanceStatus != null) {
             baptismStatusComboBox.setValue(OrdinanceStatusChoice.of(existingOrdinanceStatus.getBaptismStatus(), existingOrdinanceStatus.isBaptismReserved()));
             confirmationStatusComboBox.setValue(OrdinanceStatusChoice.of(existingOrdinanceStatus.getConfirmationStatus(), existingOrdinanceStatus.isConfirmationReserved()));

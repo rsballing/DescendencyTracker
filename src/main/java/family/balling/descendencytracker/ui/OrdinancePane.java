@@ -257,7 +257,7 @@ final class OrdinancePane {
                 detailsColumn
         );
         ordinanceTable.setPlaceholder(new Label("No ordinance rows for the selected person."));
-        ordinanceTable.setFixedCellSize(23);
+        ordinanceTable.setFixedCellSize(32);
 
         ordinanceTable.setFocusTraversable(true);
         ordinanceTable.setOnKeyPressed(event -> {

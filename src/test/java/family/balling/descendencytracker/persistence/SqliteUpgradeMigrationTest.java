@@ -138,6 +138,8 @@ class SqliteUpgradeMigrationTest {
         assertEquals("Legacy Person", person.getPreferredName());
         assertFalse(person.isConfirmedNoChildren());
         assertFalse(person.isConfirmedNoSpouse());
+        assertFalse(person.isNonBloodRelative());
+        assertFalse(person.isNoMoreFindable());
         assertEquals(OrdinanceStatus.OPEN, ordinanceStatus.getBaptismStatus());
         assertFalse(ordinanceStatus.isBaptismReserved());
         assertEquals("legacy notes", ordinanceStatus.getOrdinanceNotes());
@@ -158,6 +160,8 @@ class SqliteUpgradeMigrationTest {
         first.setPreferredName("First");
         first.setConfirmedNoChildren(true);
         first.setConfirmedNoSpouse(true);
+        first.setNonBloodRelative(true);
+        first.setNoMoreFindable(true);
         first = personRepository.save(first);
 
         Person second = new Person();
@@ -188,6 +192,8 @@ class SqliteUpgradeMigrationTest {
 
         assertTrue(reloadedPerson.isConfirmedNoChildren());
         assertTrue(reloadedPerson.isConfirmedNoSpouse());
+        assertTrue(reloadedPerson.isNonBloodRelative());
+        assertTrue(reloadedPerson.isNoMoreFindable());
         assertTrue(reloadedStatus.isBaptismReserved());
         assertTrue(reloadedStatus.isConfirmationReserved());
         assertTrue(reloadedStatus.isEndowmentReserved());

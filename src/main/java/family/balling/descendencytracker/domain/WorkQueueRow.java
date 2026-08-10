@@ -13,12 +13,15 @@ public class WorkQueueRow {
     private final int childCount;
     private final int spouseCount;
     private final boolean hasOpenOrdinances;
+    private final boolean bornMoreThan110YearsAgo;
     private final boolean hasReservedOrdinances;
     private final boolean hasConnectedParents;
     private final boolean hasConnectedChildren;
     private final boolean hasConnectedSpouses;
     private final boolean confirmedNoChildren;
     private final boolean confirmedNoSpouse;
+    private final boolean nonBloodRelative;
+    private final boolean noMoreFindable;
 
     public WorkQueueRow(
             Long personId,
@@ -31,12 +34,15 @@ public class WorkQueueRow {
             int childCount,
             int spouseCount,
             boolean hasOpenOrdinances,
+            boolean bornMoreThan110YearsAgo,
             boolean hasReservedOrdinances,
             boolean hasConnectedParents,
             boolean hasConnectedChildren,
             boolean hasConnectedSpouses,
             boolean confirmedNoChildren,
-            boolean confirmedNoSpouse
+            boolean confirmedNoSpouse,
+            boolean nonBloodRelative,
+            boolean noMoreFindable
     ) {
         this.personId = personId;
         this.displayName = displayName;
@@ -48,12 +54,15 @@ public class WorkQueueRow {
         this.childCount = childCount;
         this.spouseCount = spouseCount;
         this.hasOpenOrdinances = hasOpenOrdinances;
+        this.bornMoreThan110YearsAgo = bornMoreThan110YearsAgo;
         this.hasReservedOrdinances = hasReservedOrdinances;
         this.hasConnectedParents = hasConnectedParents;
         this.hasConnectedChildren = hasConnectedChildren;
         this.hasConnectedSpouses = hasConnectedSpouses;
         this.confirmedNoChildren = confirmedNoChildren;
         this.confirmedNoSpouse = confirmedNoSpouse;
+        this.nonBloodRelative = nonBloodRelative;
+        this.noMoreFindable = noMoreFindable;
     }
 
     public Long getPersonId() {
@@ -96,6 +105,10 @@ public class WorkQueueRow {
         return hasOpenOrdinances;
     }
 
+    public boolean isBornMoreThan110YearsAgo() {
+        return bornMoreThan110YearsAgo;
+    }
+
     public boolean hasReservedOrdinances() {
         return hasReservedOrdinances;
     }
@@ -118,5 +131,17 @@ public class WorkQueueRow {
 
     public boolean isConfirmedNoSpouse() {
         return confirmedNoSpouse;
+    }
+
+    public boolean hasFewerThanTwoParents() {
+        return parentCount < 2;
+    }
+
+    public boolean isNonBloodRelative() {
+        return nonBloodRelative;
+    }
+
+    public boolean isNoMoreFindable() {
+        return noMoreFindable;
     }
 }

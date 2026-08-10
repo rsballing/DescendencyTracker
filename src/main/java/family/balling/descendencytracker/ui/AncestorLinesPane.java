@@ -324,7 +324,7 @@ final class AncestorLinesPane {
         );
         ancestorLineTable.getStyleClass().add("compact-table");
         ancestorLineTable.setPlaceholder(new Label("No ancestor lines available."));
-        ancestorLineTable.setFixedCellSize(23);
+        ancestorLineTable.setFixedCellSize(32);
 
         ancestorLineTable.setRowFactory(table -> {
             TableRow<AncestorLineSummary> row = new TableRow<>();
@@ -415,7 +415,7 @@ final class AncestorLinesPane {
         );
         lineWorkbenchTable.getStyleClass().add("compact-table");
         lineWorkbenchTable.setPlaceholder(new Label("No workbench items for this line."));
-        lineWorkbenchTable.setFixedCellSize(23);
+        lineWorkbenchTable.setFixedCellSize(32);
 
         lineWorkbenchTable.setRowFactory(table -> {
             TableRow<LineWorkbenchRow> row = new TableRow<>();

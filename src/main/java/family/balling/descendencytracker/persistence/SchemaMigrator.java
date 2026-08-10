@@ -28,6 +28,10 @@ public final class SchemaMigrator {
                     reviewed_status TEXT NOT NULL DEFAULT 'NOT_REVIEWED',
                     notes TEXT,
                     is_root INTEGER NOT NULL DEFAULT 0,
+                    confirmed_no_children INTEGER NOT NULL DEFAULT 0,
+                    confirmed_no_spouse INTEGER NOT NULL DEFAULT 0,
+                    non_blood_relative INTEGER NOT NULL DEFAULT 0,
+                    no_more_findable INTEGER NOT NULL DEFAULT 0,
                     is_deleted INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -43,6 +47,8 @@ public final class SchemaMigrator {
             ensureColumnExists(connection, "person", "last_synced_at", "ALTER TABLE person ADD COLUMN last_synced_at TEXT");
             ensureColumnExists(connection, "person", "confirmed_no_children", "ALTER TABLE person ADD COLUMN confirmed_no_children INTEGER NOT NULL DEFAULT 0");
             ensureColumnExists(connection, "person", "confirmed_no_spouse", "ALTER TABLE person ADD COLUMN confirmed_no_spouse INTEGER NOT NULL DEFAULT 0");
+            ensureColumnExists(connection, "person", "non_blood_relative", "ALTER TABLE person ADD COLUMN non_blood_relative INTEGER NOT NULL DEFAULT 0");
+            ensureColumnExists(connection, "person", "no_more_findable", "ALTER TABLE person ADD COLUMN no_more_findable INTEGER NOT NULL DEFAULT 0");
 
             statement.executeUpdate("""
                 CREATE INDEX IF NOT EXISTS idx_person_active_name

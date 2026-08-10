@@ -11,6 +11,7 @@ import family.balling.descendencytracker.domain.enums.OrdinanceStatus;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.time.LocalDate;
 
 public class WorkQueueService {
     private final RelationshipService relationshipService;
@@ -53,9 +54,9 @@ public class WorkQueueService {
             );
 
             OrdinanceEligibilityRow bestRow = dashboard.stream()
-                    .filter(row -> isQueueBucket(row.getSuggestedStatus()))
+                    .filter(row -> isQueueBucket(queueStatusFor(row)))
                     .min(Comparator
-                            .comparingInt((OrdinanceEligibilityRow row) -> bucketPriority(row.getSuggestedStatus()))
+                            .comparingInt((OrdinanceEligibilityRow row) -> bucketPriority(queueStatusFor(row)))
                             .thenComparing(OrdinanceEligibilityRow::getOrdinanceName)
                             .thenComparing(row -> row.getRelatedPersonName() == null ? "" : row.getRelatedPersonName()))
                     .orElse(null);
@@ -68,23 +69,26 @@ public class WorkQueueService {
                     person.getPersonId(),
                     person.getDisplayName(),
                     person.getFsPid(),
-                    bestRow == null ? null : bestRow.getSuggestedStatus(),
+                    bestRow == null ? null : queueStatusFor(bestRow),
                     bestRow == null
                             ? buildFallbackTriggerLabel(person, parents, children, spouses)
                             : buildTriggerLabel(bestRow),
                     bestRow == null
                             ? buildFallbackReason(person, parents, children, spouses)
-                            : bestRow.getReason(),
+                            : buildQueueReason(bestRow),
                     parents.size(),
                     children.size(),
                     spouses.size(),
-                    dashboard.stream().anyMatch(row -> row.getSuggestedStatus() == OrdinanceStatus.OPEN),
+                    dashboard.stream().anyMatch(row -> row.getRecordedStatus() == OrdinanceStatus.OPEN),
+                    isBornMoreThan110YearsAgo(person),
                     hasReservedOrdinances(ordinanceStatus, spouses),
                     hasConnectedParents,
                     hasConnectedChildren,
                     hasConnectedSpouses,
                     person.isConfirmedNoChildren(),
-                    person.isConfirmedNoSpouse()
+                    person.isConfirmedNoSpouse(),
+                    person.isNonBloodRelative(),
+                    person.isNoMoreFindable()
             ));
         }
 
@@ -139,6 +143,30 @@ public class WorkQueueService {
         return row.getOrdinanceName() + " - " + related;
     }
 
+    private OrdinanceStatus queueStatusFor(OrdinanceEligibilityRow row) {
+        if (row == null) {
+            return null;
+        }
+
+        if (row.getRecordedStatus() == OrdinanceStatus.OPEN) {
+            return OrdinanceStatus.OPEN;
+        }
+
+        return row.getSuggestedStatus();
+    }
+
+    private String buildQueueReason(OrdinanceEligibilityRow row) {
+        if (row == null) {
+            return "";
+        }
+
+        if (row.getRecordedStatus() == OrdinanceStatus.OPEN) {
+            return "Recorded ordinance status is marked open.";
+        }
+
+        return row.getReason();
+    }
+
     private boolean hasReservedOrdinances(PersonOrdinanceStatus ordinanceStatus, List<SpouseLink> spouses) {
         if (ordinanceStatus.isBaptismReserved()
                 || ordinanceStatus.isConfirmationReserved()
@@ -149,6 +177,40 @@ public class WorkQueueService {
         }
 
         return spouses.stream().anyMatch(SpouseLink::isSealedToSpouseReserved);
+    }
+
+    private boolean isBornMoreThan110YearsAgo(Person person) {
+        Integer birthYear = extractYear(person == null ? null : person.getBirthDateText());
+        if (birthYear == null) {
+            return false;
+        }
+
+        return birthYear <= LocalDate.now().minusYears(110).getYear();
+    }
+
+    private Integer extractYear(String dateText) {
+        if (dateText == null) {
+            return null;
+        }
+
+        String trimmed = dateText.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+
+        String[] tokens = trimmed.split("[^0-9]+");
+        for (int index = tokens.length - 1; index >= 0; index--) {
+            String token = tokens[index];
+            if (token.length() == 4) {
+                try {
+                    return Integer.parseInt(token);
+                } catch (NumberFormatException ignored) {
+                    return null;
+                }
+            }
+        }
+
+        return null;
     }
 
     private String buildFallbackTriggerLabel(

@@ -87,6 +87,7 @@ public class ParentChildDialog extends Dialog<ParentChildDialog.Result> {
 
         getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         getDialogPane().setContent(buildForm(addingParent));
+        DialogThemeSupport.apply(this);
 
         relatedPersonComboBox.setPrefWidth(320);
         mirrorSpouseComboBox.setPrefWidth(320);

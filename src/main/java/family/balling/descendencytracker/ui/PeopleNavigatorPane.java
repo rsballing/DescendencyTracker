@@ -11,12 +11,14 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToolBar;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
@@ -34,6 +36,7 @@ final class PeopleNavigatorPane {
     private final TableView<Person> personTable = new TableView<>();
     private final TextField searchField = new TextField();
     private final ComboBox<String> peopleFilterCombo = new ComboBox<>();
+    private final ComboBox<Person> pinnedPeopleCombo = new ComboBox<>();
 
     private final Predicate<Person> hasIncompleteTrackedOrdinances;
     private final Consumer<Person> onSelectionChanged;
@@ -41,6 +44,7 @@ final class PeopleNavigatorPane {
 
     PeopleNavigatorPane(
             Runnable onAddPerson,
+            Consumer<Person> onOpenPinnedPerson,
             Runnable onEditSelected,
             Runnable onShowSelectedPersonDetails,
             Runnable onSetSelectedAsRoot,
@@ -61,15 +65,14 @@ final class PeopleNavigatorPane {
 
         Label heading = new Label("People");
         heading.getStyleClass().add("panel-title");
-        Button addPersonButton = new Button("+");
+        Button addPersonButton = new Button("New Person");
         addPersonButton.setFocusTraversable(false);
         addPersonButton.setMnemonicParsing(false);
-        addPersonButton.setMinSize(30, 24);
-        addPersonButton.setPrefSize(30, 24);
-        addPersonButton.setMaxSize(30, 24);
-        addPersonButton.getStyleClass().addAll("icon-button", "section-add-button");
+        addPersonButton.getStyleClass().addAll("utility-button", "section-add-button");
+        addPersonButton.setTooltip(new Tooltip("Add Person"));
         addPersonButton.setOnAction(event -> onAddPerson.run());
-        HBox headingRow = new HBox(6, heading, addPersonButton);
+        configurePinnedPeopleCombo(onOpenPinnedPerson);
+        HBox headingRow = new HBox(6, heading, addPersonButton, pinnedPeopleCombo);
         headingRow.getStyleClass().add("panel-header-row");
 
         content = new VBox(6, headingRow, buildFilterToolBar(), personTable);
@@ -98,6 +101,23 @@ final class PeopleNavigatorPane {
     void clearFilters() {
         searchField.clear();
         peopleFilterCombo.setValue("All People");
+    }
+
+    void setPinnedPeople(List<Person> pinnedPeople) {
+        Person selected = pinnedPeopleCombo.getValue();
+        pinnedPeopleCombo.getItems().setAll(pinnedPeople);
+        if (selected == null) {
+            pinnedPeopleCombo.setValue(null);
+            return;
+        }
+
+        for (Person person : pinnedPeople) {
+            if (selected.getPersonId() != null && selected.getPersonId().equals(person.getPersonId())) {
+                pinnedPeopleCombo.setValue(person);
+                return;
+            }
+        }
+        pinnedPeopleCombo.setValue(null);
     }
 
     boolean selectPersonById(long personId, boolean clearFiltersFirst) {
@@ -158,6 +178,46 @@ final class PeopleNavigatorPane {
         );
         toolBar.getStyleClass().add("section-toolbar");
         return toolBar;
+    }
+
+    private void configurePinnedPeopleCombo(Consumer<Person> onOpenPinnedPerson) {
+        pinnedPeopleCombo.setPromptText("Pinned");
+        pinnedPeopleCombo.setPrefWidth(220);
+        pinnedPeopleCombo.setVisibleRowCount(12);
+        pinnedPeopleCombo.setFocusTraversable(false);
+        pinnedPeopleCombo.getStyleClass().add("utility-combo");
+        pinnedPeopleCombo.setButtonCell(createPinnedPersonCell());
+        pinnedPeopleCombo.setCellFactory(list -> createPinnedPersonCell());
+        pinnedPeopleCombo.valueProperty().addListener((obs, oldValue, newValue) -> {
+            if (newValue == null) {
+                return;
+            }
+            onOpenPinnedPerson.accept(newValue);
+            pinnedPeopleCombo.setValue(null);
+        });
+    }
+
+    private ListCell<Person> createPinnedPersonCell() {
+        return new ListCell<>() {
+            @Override
+            protected void updateItem(Person item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(getListView() == null ? "Pinned" : null);
+                    return;
+                }
+                setText(buildPinnedPersonLabel(item));
+            }
+        };
+    }
+
+    private String buildPinnedPersonLabel(Person person) {
+        String displayName = nullSafe(person == null ? null : person.getDisplayName());
+        if (displayName.isBlank()) {
+            displayName = "(Unnamed Person)";
+        }
+        String fsPid = nullSafe(person == null ? null : person.getFsPid()).trim();
+        return fsPid.isBlank() ? displayName : displayName + " [" + fsPid + "]";
     }
 
     private void applyPersonFilter() {
@@ -254,7 +314,7 @@ final class PeopleNavigatorPane {
         personTable.getColumns().addAll(nameColumn, birthColumn, deathColumn, fsPidColumn);
         personTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         personTable.setPlaceholder(new Label("No matching people."));
-        personTable.setFixedCellSize(23);
+        personTable.setFixedCellSize(28);
         personTable.getStyleClass().add("compact-table");
 
         MenuItem editPersonItem = new MenuItem("Edit Person");

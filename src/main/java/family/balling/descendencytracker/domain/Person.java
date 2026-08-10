@@ -23,6 +23,8 @@ public class Person {
     private boolean root;
     private boolean confirmedNoChildren;
     private boolean confirmedNoSpouse;
+    private boolean nonBloodRelative;
+    private boolean noMoreFindable;
     private boolean deleted;
     private String createdAt;
     private String updatedAt;
@@ -51,6 +53,8 @@ public class Person {
         this.root = other.root;
         this.confirmedNoChildren = other.confirmedNoChildren;
         this.confirmedNoSpouse = other.confirmedNoSpouse;
+        this.nonBloodRelative = other.nonBloodRelative;
+        this.noMoreFindable = other.noMoreFindable;
         this.deleted = other.deleted;
         this.createdAt = other.createdAt;
         this.updatedAt = other.updatedAt;
@@ -201,6 +205,22 @@ public class Person {
 
     public void setConfirmedNoSpouse(boolean confirmedNoSpouse) {
         this.confirmedNoSpouse = confirmedNoSpouse;
+    }
+
+    public boolean isNonBloodRelative() {
+        return nonBloodRelative;
+    }
+
+    public void setNonBloodRelative(boolean nonBloodRelative) {
+        this.nonBloodRelative = nonBloodRelative;
+    }
+
+    public boolean isNoMoreFindable() {
+        return noMoreFindable;
+    }
+
+    public void setNoMoreFindable(boolean noMoreFindable) {
+        this.noMoreFindable = noMoreFindable;
     }
 
     public String getCreatedAt() {

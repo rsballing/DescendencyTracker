@@ -23,24 +23,32 @@ import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
+import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToolBar;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeItem;
@@ -50,6 +58,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -72,6 +81,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -89,13 +99,26 @@ public class MainView extends BorderPane {
             new KeyCodeCombination(KeyCode.DELETE, KeyCombination.SHORTCUT_DOWN);
     private static final KeyCodeCombination HIDE_DETAILS_SHORTCUT =
             new KeyCodeCombination(KeyCode.H, KeyCombination.SHORTCUT_DOWN);
-    private static final KeyCodeCombination DISABLED_NEW_PERSON_SHORTCUT =
+    private static final KeyCodeCombination ADD_PERSON_SHORTCUT =
+            new KeyCodeCombination(KeyCode.A, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination NEW_PERSON_SHORTCUT =
             new KeyCodeCombination(KeyCode.N, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination FAMILY_TAB_SHORTCUT =
+            new KeyCodeCombination(KeyCode.F, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination WORK_QUEUE_TAB_SHORTCUT =
+            new KeyCodeCombination(KeyCode.W, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination ANCESTOR_LINES_TAB_SHORTCUT =
+            new KeyCodeCombination(KeyCode.L, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination PIN_PERSON_SHORTCUT =
+            new KeyCodeCombination(KeyCode.P, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCodeCombination UNPIN_PERSON_SHORTCUT =
+            new KeyCodeCombination(KeyCode.U, KeyCombination.SHORTCUT_DOWN);
     private static final DateTimeFormatter BACKUP_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final DateTimeFormatter SUMMARY_DATE_FORMAT =
             DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM);
     private static final String DATA_ACTIONS_PLACEHOLDER = "Data Actions...";
+    private static final int MAX_RECENT_PEOPLE = 24;
 
     private final PersonService personService;
     private final RelationshipService relationshipService;
@@ -125,13 +148,33 @@ public class MainView extends BorderPane {
     private final Label activeRootLabel = new Label("Current Root: (none)");
     private final Label selectedPersonNameLabel = new Label("None selected");
     private final Label selectedPersonFsPidLabel = new Label();
+    private final Label selectedPersonRelationshipLabel = new Label();
+    private final Label selectedPersonFamilyCountsLabel = new Label();
     private final Label relationshipToRootValue = new Label();
     private final Label statusLabel = new Label();
+    private final Button historyButton = new Button("History");
+    private final ToggleButton darkModeButton = new ToggleButton("Dark");
     private final Button shortcutsHelpButton = new Button("?");
     private final ComboBox<String> dataActionsComboBox = new ComboBox<>();
 
     private final TextField workQueueSearchField = new TextField();
-    private final ComboBox<String> workQueueAttributeFilterCombo = new ComboBox<>();
+    private final MenuButton workQueueFilterMenuButton = new MenuButton("Filters");
+    private final CheckMenuItem workQueueOpenFilterItem = new CheckMenuItem("Open ordinances");
+    private final CheckMenuItem workQueueBorn110FilterItem = new CheckMenuItem("Born 110+ years ago");
+    private final CheckMenuItem workQueueNoChildrenFilterItem = new CheckMenuItem("No children and not confirmed childless");
+    private final CheckMenuItem workQueueNoSpouseFilterItem = new CheckMenuItem("No spouse and not confirmed single");
+    private final CheckMenuItem workQueueNoParentsFilterItem = new CheckMenuItem("Less than two parents");
+    private final CheckMenuItem workQueueReservedFilterItem = new CheckMenuItem("Reserved ordinances");
+    private final CheckMenuItem workQueueHideNonBloodFilterItem = new CheckMenuItem("Hide non-blood relatives");
+    private final CheckMenuItem workQueueHideNoMoreFindableFilterItem = new CheckMenuItem("Hide no more findable");
+    private final FlowPane workQueueActiveFiltersPane = new FlowPane();
+    private final Label workQueuePreviewNameValue = new Label("Select a work queue row.");
+    private final Label workQueuePreviewFsPidValue = new Label();
+    private final Label workQueuePreviewBucketValue = new Label();
+    private final Label workQueuePreviewTriggerValue = new Label();
+    private final Label workQueuePreviewRelationshipsValue = new Label();
+    private final Label workQueuePreviewReasonValue = new Label();
+    private final FlowPane workQueuePreviewBadgesPane = new FlowPane();
     private final Label summaryPreferredNameValue = new Label();
     private final Label summaryFsPidValue = new Label();
     private final Label summaryRootValue = new Label();
@@ -152,6 +195,11 @@ public class MainView extends BorderPane {
     private final Map<Long, AncestorLineSummary> ancestorSummaryCache = new HashMap<>();
     private final Map<Long, List<AncestorLineSummary>> ancestorSummariesByPersonIdCache = new HashMap<>();
     private final Map<Long, OrdinanceTabData> ordinanceTabDataByPersonIdCache = new HashMap<>();
+    private final ObservableList<Person> recentPeople = FXCollections.observableArrayList();
+    private final ObservableList<Person> pinnedPeople = FXCollections.observableArrayList();
+    private final ListView<Person> historyListView = new ListView<>();
+    private final LinkedHashSet<Long> pinnedPersonIds = new LinkedHashSet<>();
+    private final List<Long> recentPersonIds = new java.util.ArrayList<>();
     private final PeopleNavigatorPane peopleNavigatorPane;
     private final OrdinancePane ordinancePane;
     private final AncestorLinesPane ancestorLinesPane;
@@ -159,8 +207,10 @@ public class MainView extends BorderPane {
     private final PauseTransition ordinancesWarmupDelay = new PauseTransition(Duration.millis(220));
     private Stage personDetailsStage;
     private Stage shortcutsStage;
+    private Stage historyStage;
     private boolean syncingTreeSelection;
     private boolean resettingDataActionsComboBox;
+    private boolean darkModeEnabled;
     private Long renderedTreeRootPersonId;
 
     public MainView(PersonService personService,
@@ -179,6 +229,7 @@ public class MainView extends BorderPane {
         this.workQueueService = workQueueService;
         this.peopleNavigatorPane = new PeopleNavigatorPane(
                 this::addPerson,
+                this::openPinnedPerson,
                 this::editSelectedPerson,
                 this::showPersonDetailsDialog,
                 this::setSelectedAsRoot,
@@ -209,7 +260,13 @@ public class MainView extends BorderPane {
                 oldScene.getAccelerators().remove(EDIT_SHORTCUT);
                 oldScene.getAccelerators().remove(DELETE_SHORTCUT);
                 oldScene.getAccelerators().remove(HIDE_DETAILS_SHORTCUT);
-                oldScene.getAccelerators().remove(DISABLED_NEW_PERSON_SHORTCUT);
+                oldScene.getAccelerators().remove(ADD_PERSON_SHORTCUT);
+                oldScene.getAccelerators().remove(NEW_PERSON_SHORTCUT);
+                oldScene.getAccelerators().remove(FAMILY_TAB_SHORTCUT);
+                oldScene.getAccelerators().remove(WORK_QUEUE_TAB_SHORTCUT);
+                oldScene.getAccelerators().remove(ANCESTOR_LINES_TAB_SHORTCUT);
+                oldScene.getAccelerators().remove(PIN_PERSON_SHORTCUT);
+                oldScene.getAccelerators().remove(UNPIN_PERSON_SHORTCUT);
             }
             if (newScene != null) {
                 newScene.getAccelerators().put(ROOT_SHORTCUT, this::setSelectedAsRoot);
@@ -217,8 +274,13 @@ public class MainView extends BorderPane {
                 newScene.getAccelerators().put(EDIT_SHORTCUT, this::editSelectedOrRootPerson);
                 newScene.getAccelerators().put(DELETE_SHORTCUT, this::deleteSelectedPerson);
                 newScene.getAccelerators().put(HIDE_DETAILS_SHORTCUT, this::hidePersonDetailsDialog);
-                newScene.getAccelerators().put(DISABLED_NEW_PERSON_SHORTCUT, () -> {
-                });
+                newScene.getAccelerators().put(ADD_PERSON_SHORTCUT, this::addPerson);
+                newScene.getAccelerators().put(NEW_PERSON_SHORTCUT, this::addPerson);
+                newScene.getAccelerators().put(FAMILY_TAB_SHORTCUT, () -> selectWorkspaceTab("Family"));
+                newScene.getAccelerators().put(WORK_QUEUE_TAB_SHORTCUT, () -> selectWorkspaceTab("Work Queue"));
+                newScene.getAccelerators().put(ANCESTOR_LINES_TAB_SHORTCUT, () -> selectWorkspaceTab("Ancestor Lines"));
+                newScene.getAccelerators().put(PIN_PERSON_SHORTCUT, this::pinSelectedPerson);
+                newScene.getAccelerators().put(UNPIN_PERSON_SHORTCUT, this::unpinSelectedPerson);
             }
         });
         refreshPeople();
@@ -248,9 +310,9 @@ public class MainView extends BorderPane {
         detailArea.setPrefRowCount(18);
         buildPersonDetailsStage();
         buildShortcutsStage();
+        buildHistoryStage();
 
         workspaceTabs.getTabs().add(new Tab("Work Queue", buildWorkQueueTabContent()));
-        workspaceTabs.getTabs().add(new Tab("Ordinances", buildOrdinancesTabContent()));
         workspaceTabs.getTabs().add(new Tab("Ancestor Lines", buildAncestorLinesTabContent()));
         workspaceTabs.getTabs().add(new Tab("Family", buildFamilyTabContent()));
         workspaceTabs.getStyleClass().add("workspace-tabs");
@@ -271,7 +333,7 @@ public class MainView extends BorderPane {
         SplitPane leftSplit = new SplitPane(peopleNavigatorPane.getContent(), treesSplit);
         leftSplit.setOrientation(Orientation.VERTICAL);
         leftSplit.getStyleClass().add("workspace-split");
-        leftSplit.setDividerPositions(0.34);
+        leftSplit.setDividerPositions(0.50);
 
         HBox selectedPersonHeader = buildSelectedPersonHeader();
         VBox workspacePane = new VBox(8, selectedPersonHeader, workspaceTabs);
@@ -287,12 +349,19 @@ public class MainView extends BorderPane {
         shortcutsHelpButton.setPrefSize(28, 28);
         shortcutsHelpButton.setOnAction(event -> showShortcutsDialog());
         shortcutsHelpButton.getStyleClass().addAll("icon-button", "utility-button");
+        historyButton.setFocusTraversable(false);
+        historyButton.setOnAction(event -> showHistoryDialog());
+        historyButton.getStyleClass().addAll("utility-button", "history-button");
+        historyButton.setTooltip(new Tooltip("Show recent people"));
+        darkModeButton.setFocusTraversable(false);
+        darkModeButton.setOnAction(event -> setDarkModeEnabled(darkModeButton.isSelected()));
+        darkModeButton.getStyleClass().addAll("utility-button", "dark-mode-toggle");
 
         configureDataActionsComboBox();
 
         Region bottomSpacer = new Region();
         HBox.setHgrow(bottomSpacer, Priority.ALWAYS);
-        HBox bottomBar = new HBox(8, statusLabel, bottomSpacer, dataActionsComboBox, shortcutsHelpButton);
+        HBox bottomBar = new HBox(8, statusLabel, bottomSpacer, historyButton, darkModeButton, dataActionsComboBox, shortcutsHelpButton);
         bottomBar.getStyleClass().add("status-bar");
         statusLabel.getStyleClass().add("status-text");
 
@@ -303,27 +372,76 @@ public class MainView extends BorderPane {
     private HBox buildSelectedPersonHeader() {
         Label selectedPrefix = new Label("Selected");
         selectedPrefix.getStyleClass().add("selected-person-prefix");
+        selectedPersonRelationshipLabel.getStyleClass().addAll("work-queue-badge", "work-queue-badge-reserved");
+        selectedPersonFamilyCountsLabel.getStyleClass().addAll("work-queue-badge", "selected-person-stats-badge");
 
-        HBox header = new HBox(10, selectedPrefix, selectedPersonNameLabel, selectedPersonFsPidLabel);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        HBox header = new HBox(
+                10,
+                selectedPrefix,
+                selectedPersonNameLabel,
+                selectedPersonFsPidLabel,
+                spacer,
+                selectedPersonRelationshipLabel,
+                selectedPersonFamilyCountsLabel
+        );
         header.getStyleClass().add("selected-person-strip");
         return header;
     }
 
     private VBox buildWorkQueueTabContent() {
         Button clearQueueFiltersButton = new Button("Clear Queue Filters");
+        Button openQueuePersonButton = new Button("Open Person");
+        Button editQueuePersonButton = new Button("Edit Person");
+        Button queueDetailsButton = new Button("Details");
 
         clearQueueFiltersButton.setOnAction(event -> clearWorkQueueFilters());
+        openQueuePersonButton.setOnAction(event -> openSelectedWorkQueuePerson());
+        editQueuePersonButton.setOnAction(event -> editSelectedWorkQueuePerson());
+        queueDetailsButton.setOnAction(event -> showSelectedWorkQueuePersonDetails());
 
         ToolBar toolbar = new ToolBar(
                 new Label("Find"),
                 workQueueSearchField,
                 clearQueueFiltersButton,
-                new Label("Flag"),
-                workQueueAttributeFilterCombo
+                new Label("Filters"),
+                workQueueFilterMenuButton,
+                workQueueActiveFiltersPane
         );
         toolbar.getStyleClass().add("section-toolbar");
 
-        VBox box = new VBox(8, toolbar, workQueueTable);
+        workQueuePreviewNameValue.getStyleClass().add("section-title");
+        workQueuePreviewFsPidValue.getStyleClass().add("selected-person-meta");
+        workQueuePreviewBadgesPane.setHgap(6);
+        workQueuePreviewBadgesPane.setVgap(6);
+        workQueuePreviewBadgesPane.getStyleClass().add("work-queue-badge-pane");
+
+        ToolBar previewToolbar = new ToolBar(
+                openQueuePersonButton,
+                editQueuePersonButton,
+                queueDetailsButton
+        );
+        previewToolbar.getStyleClass().add("section-toolbar");
+
+        VBox previewBox = new VBox(
+                8,
+                new HBox(8, workQueuePreviewNameValue, workQueuePreviewFsPidValue),
+                workQueuePreviewBadgesPane,
+                buildPreviewField("Bucket", workQueuePreviewBucketValue),
+                buildPreviewField("Trigger", workQueuePreviewTriggerValue),
+                buildPreviewField("Relationships", workQueuePreviewRelationshipsValue),
+                buildPreviewField("Reason", workQueuePreviewReasonValue),
+                previewToolbar
+        );
+        previewBox.getStyleClass().add("section-body");
+
+        TitledPane previewPane = new TitledPane("Queue Preview", previewBox);
+        previewPane.getStyleClass().add("section-pane");
+        previewPane.setCollapsible(false);
+
+        VBox box = new VBox(8, toolbar, workQueueTable, previewPane);
         box.setPadding(new Insets(10));
         box.getStyleClass().add("panel-surface");
         workQueueTable.getStyleClass().add("compact-table");
@@ -456,12 +574,33 @@ public class MainView extends BorderPane {
         return peopleNavigatorPane.getSelectedPerson();
     }
 
+    private void openPinnedPerson(Person person) {
+        if (person == null || person.getPersonId() == null) {
+            return;
+        }
+        selectPersonInTable(person.getPersonId());
+    }
+
     private void clearPersonFilters() {
         peopleNavigatorPane.clearFilters();
     }
 
     private void handleSelectedPersonChanged(Person newSelection) {
+        rememberRecentPerson(newSelection);
         applySelectedPersonToWorkspace(newSelection);
+    }
+
+    private void rememberRecentPerson(Person person) {
+        if (person == null || person.getPersonId() == null) {
+            return;
+        }
+
+        recentPersonIds.remove(person.getPersonId());
+        recentPersonIds.add(0, person.getPersonId());
+        while (recentPersonIds.size() > MAX_RECENT_PEOPLE) {
+            recentPersonIds.remove(recentPersonIds.size() - 1);
+        }
+        reconcileNavigationLists();
     }
 
     private void applySelectedPersonToWorkspace(Person newSelection) {
@@ -522,53 +661,84 @@ public class MainView extends BorderPane {
         workQueueSearchField.setPrefWidth(130);
         workQueueSearchField.textProperty().addListener((obs, oldValue, newValue) -> applyWorkQueueFilter());
 
-        workQueueAttributeFilterCombo.getItems().setAll(
-                "All",
-                "Open ordinances",
-                "Reserved ordinances",
-                "Has connected parents",
-                "Has connected children",
-                "Has connected spouses",
-                "Confirmed no children",
-                "Confirmed no spouse",
-                "Missing spouse connection",
-                "Missing child connection"
+        workQueueFilterMenuButton.getItems().setAll(
+                workQueueOpenFilterItem,
+                workQueueBorn110FilterItem,
+                workQueueNoChildrenFilterItem,
+                workQueueNoSpouseFilterItem,
+                workQueueNoParentsFilterItem,
+                workQueueReservedFilterItem,
+                workQueueHideNonBloodFilterItem,
+                workQueueHideNoMoreFindableFilterItem
         );
-        workQueueAttributeFilterCombo.setValue("All");
-        workQueueAttributeFilterCombo.valueProperty().addListener((obs, oldValue, newValue) -> applyWorkQueueFilter());
+        workQueueFilterMenuButton.setFocusTraversable(false);
+        workQueueActiveFiltersPane.setHgap(4);
+        workQueueActiveFiltersPane.setVgap(4);
+        workQueueActiveFiltersPane.getStyleClass().add("work-queue-active-filter-pane");
+
+        List.of(
+                workQueueOpenFilterItem,
+                workQueueBorn110FilterItem,
+                workQueueNoChildrenFilterItem,
+                workQueueNoSpouseFilterItem,
+                workQueueNoParentsFilterItem,
+                workQueueReservedFilterItem,
+                workQueueHideNonBloodFilterItem,
+                workQueueHideNoMoreFindableFilterItem
+        ).forEach(item -> item.selectedProperty().addListener((obs, oldValue, newValue) -> {
+            updateWorkQueueFilterMenuText();
+            applyWorkQueueFilter();
+        }));
+
+        updateWorkQueueFilterMenuText();
     }
 
     private void clearWorkQueueFilters() {
         workQueueSearchField.clear();
-        workQueueAttributeFilterCombo.setValue("All");
+        workQueueOpenFilterItem.setSelected(false);
+        workQueueBorn110FilterItem.setSelected(false);
+        workQueueNoChildrenFilterItem.setSelected(false);
+        workQueueNoSpouseFilterItem.setSelected(false);
+        workQueueNoParentsFilterItem.setSelected(false);
+        workQueueReservedFilterItem.setSelected(false);
+        workQueueHideNonBloodFilterItem.setSelected(false);
+        workQueueHideNoMoreFindableFilterItem.setSelected(false);
+        updateWorkQueueFilterMenuText();
     }
 
     private void applyWorkQueueFilter() {
         String searchText = workQueueSearchField.getText() == null ? "" : workQueueSearchField.getText().trim().toLowerCase();
-        String attributeFilter = workQueueAttributeFilterCombo.getValue();
 
         filteredWorkQueueRows.setPredicate(row -> {
             if (row == null) {
                 return false;
             }
 
-            if (attributeFilter != null && !"All".equals(attributeFilter)) {
-                boolean matchesAttribute = switch (attributeFilter) {
-                    case "Open ordinances" -> row.hasOpenOrdinances();
-                    case "Reserved ordinances" -> row.hasReservedOrdinances();
-                    case "Has connected parents" -> row.hasConnectedParents();
-                    case "Has connected children" -> row.hasConnectedChildren();
-                    case "Has connected spouses" -> row.hasConnectedSpouses();
-                    case "Confirmed no children" -> row.isConfirmedNoChildren();
-                    case "Confirmed no spouse" -> row.isConfirmedNoSpouse();
-                    case "Missing spouse connection" -> !row.hasConnectedSpouses() && !row.isConfirmedNoSpouse();
-                    case "Missing child connection" -> !row.hasConnectedChildren() && !row.isConfirmedNoChildren();
-                    default -> true;
-                };
-
-                if (!matchesAttribute) {
-                    return false;
-                }
+            if (workQueueOpenFilterItem.isSelected() && !row.hasOpenOrdinances()) {
+                return false;
+            }
+            if (workQueueBorn110FilterItem.isSelected() && !row.isBornMoreThan110YearsAgo()) {
+                return false;
+            }
+            if (workQueueNoChildrenFilterItem.isSelected()
+                    && (row.hasConnectedChildren() || row.isConfirmedNoChildren())) {
+                return false;
+            }
+            if (workQueueNoSpouseFilterItem.isSelected()
+                    && (row.hasConnectedSpouses() || row.isConfirmedNoSpouse())) {
+                return false;
+            }
+            if (workQueueNoParentsFilterItem.isSelected() && !row.hasFewerThanTwoParents()) {
+                return false;
+            }
+            if (workQueueReservedFilterItem.isSelected() && !row.hasReservedOrdinances()) {
+                return false;
+            }
+            if (workQueueHideNonBloodFilterItem.isSelected() && row.isNonBloodRelative()) {
+                return false;
+            }
+            if (workQueueHideNoMoreFindableFilterItem.isSelected() && row.isNoMoreFindable()) {
+                return false;
             }
 
             if (searchText.isBlank()) {
@@ -580,6 +750,46 @@ public class MainView extends BorderPane {
                     || containsIgnoreCase(row.getTriggerLabel(), searchText)
                     || containsIgnoreCase(row.getReason(), searchText);
         });
+
+        reconcileWorkQueueSelectionAfterFilter();
+    }
+
+    private void updateWorkQueueFilterMenuText() {
+        long selectedCount = List.of(
+                workQueueOpenFilterItem,
+                workQueueBorn110FilterItem,
+                workQueueNoChildrenFilterItem,
+                workQueueNoSpouseFilterItem,
+                workQueueNoParentsFilterItem,
+                workQueueReservedFilterItem,
+                workQueueHideNonBloodFilterItem,
+                workQueueHideNoMoreFindableFilterItem
+        ).stream().filter(CheckMenuItem::isSelected).count();
+
+        workQueueFilterMenuButton.setText(selectedCount == 0 ? "Filters" : "Filters (" + selectedCount + ")");
+        updateWorkQueueActiveFilterBadges();
+    }
+
+    private void updateWorkQueueActiveFilterBadges() {
+        workQueueActiveFiltersPane.getChildren().clear();
+        addWorkQueueFilterBadge("Open", workQueueOpenFilterItem.isSelected());
+        addWorkQueueFilterBadge("110+", workQueueBorn110FilterItem.isSelected());
+        addWorkQueueFilterBadge("No Children", workQueueNoChildrenFilterItem.isSelected());
+        addWorkQueueFilterBadge("No Spouse", workQueueNoSpouseFilterItem.isSelected());
+        addWorkQueueFilterBadge("Less than 2 Parents", workQueueNoParentsFilterItem.isSelected());
+        addWorkQueueFilterBadge("Reserved", workQueueReservedFilterItem.isSelected());
+        addWorkQueueFilterBadge("Hide Non-blood", workQueueHideNonBloodFilterItem.isSelected());
+        addWorkQueueFilterBadge("Hide No More Findable", workQueueHideNoMoreFindableFilterItem.isSelected());
+    }
+
+    private void addWorkQueueFilterBadge(String text, boolean include) {
+        if (!include) {
+            return;
+        }
+
+        Label badge = new Label(text);
+        badge.getStyleClass().addAll("work-queue-badge", "work-queue-badge-filter");
+        workQueueActiveFiltersPane.getChildren().add(badge);
     }
 
     private boolean containsIgnoreCase(String value, String searchTextLower) {
@@ -710,6 +920,7 @@ public class MainView extends BorderPane {
         javafx.scene.Scene scene = new javafx.scene.Scene(detailPane, 520, 720);
         scene.getStylesheets().add(getThemeStylesheet());
         personDetailsStage.setScene(scene);
+        applyDarkModeClass(detailPane, darkModeEnabled);
     }
 
     private void showPersonDetailsDialog() {
@@ -738,11 +949,18 @@ public class MainView extends BorderPane {
     private void buildShortcutsStage() {
         Label shortcutsLabel = new Label("""
                 Keyboard Shortcuts
-
+                
                 Ctrl+R  Set the selected person as the current root
                 Ctrl+D  Show the person details window
                 Ctrl+H  Hide the person details window
                 Ctrl+E  Edit the selected person, or the root if none is selected
+                Ctrl+A  Add a new person
+                Ctrl+N  Add a new person
+                Ctrl+P  Pin the selected person
+                Ctrl+U  Unpin the selected person
+                Ctrl+W  Switch to the Work Queue tab
+                Ctrl+L  Switch to the Ancestor Lines tab
+                Ctrl+F  Switch to the Family tab
                 Ctrl+Delete  Delete the selected person after confirmation
                 """);
         shortcutsLabel.setWrapText(true);
@@ -755,9 +973,87 @@ public class MainView extends BorderPane {
         shortcutsStage = new Stage();
         shortcutsStage.initModality(Modality.NONE);
         shortcutsStage.setTitle("Keyboard Shortcuts");
-        javafx.scene.Scene scene = new javafx.scene.Scene(content, 420, 220);
+        javafx.scene.Scene scene = new javafx.scene.Scene(content, 420, 320);
         scene.getStylesheets().add(getThemeStylesheet());
         shortcutsStage.setScene(scene);
+        applyDarkModeClass(content, darkModeEnabled);
+    }
+
+    private void buildHistoryStage() {
+        historyListView.setItems(recentPeople);
+        historyListView.setPlaceholder(new Label("No recently viewed people."));
+        historyListView.getStyleClass().add("compact-table");
+        historyListView.setCellFactory(list -> new ListCell<>() {
+            @Override
+            protected void updateItem(Person item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : buildPersonListLabel(item));
+            }
+        });
+        historyListView.setOnMouseClicked(event -> {
+            if (event.getClickCount() == 2) {
+                openSelectedHistoryPerson();
+            }
+        });
+
+        Button openButton = new Button("Open");
+        Button pinButton = new Button("Pin");
+        Button closeButton = new Button("Close");
+        openButton.setOnAction(event -> openSelectedHistoryPerson());
+        pinButton.setOnAction(event -> pinSelectedHistoryPerson());
+        closeButton.setOnAction(event -> {
+            if (historyStage != null) {
+                historyStage.close();
+            }
+        });
+
+        ToolBar toolbar = new ToolBar(openButton, pinButton, closeButton);
+        toolbar.getStyleClass().add("section-toolbar");
+
+        VBox content = new VBox(8, toolbar, historyListView);
+        content.setPadding(new Insets(12));
+        content.getStyleClass().addAll("app-root", "dialog-surface");
+        VBox.setVgrow(historyListView, Priority.ALWAYS);
+
+        historyStage = new Stage();
+        historyStage.initModality(Modality.NONE);
+        historyStage.setTitle("Recent People");
+        javafx.scene.Scene scene = new javafx.scene.Scene(content, 460, 420);
+        scene.getStylesheets().add(getThemeStylesheet());
+        historyStage.setScene(scene);
+        applyDarkModeClass(content, darkModeEnabled);
+    }
+
+    private void setDarkModeEnabled(boolean enabled) {
+        darkModeEnabled = enabled;
+        darkModeButton.setSelected(enabled);
+        darkModeButton.setText(enabled ? "Light" : "Dark");
+        DialogThemeSupport.setDarkModeEnabled(enabled);
+
+        applyDarkModeClass(this, enabled);
+        if (personDetailsStage != null && personDetailsStage.getScene() != null) {
+            applyDarkModeClass(personDetailsStage.getScene().getRoot(), enabled);
+        }
+        if (shortcutsStage != null && shortcutsStage.getScene() != null) {
+            applyDarkModeClass(shortcutsStage.getScene().getRoot(), enabled);
+        }
+        if (historyStage != null && historyStage.getScene() != null) {
+            applyDarkModeClass(historyStage.getScene().getRoot(), enabled);
+        }
+    }
+
+    private void applyDarkModeClass(Node node, boolean enabled) {
+        if (node == null) {
+            return;
+        }
+
+        if (enabled) {
+            if (!node.getStyleClass().contains("dark-mode")) {
+                node.getStyleClass().add("dark-mode");
+            }
+        } else {
+            node.getStyleClass().remove("dark-mode");
+        }
     }
 
     private void showShortcutsDialog() {
@@ -772,6 +1068,20 @@ public class MainView extends BorderPane {
         shortcutsStage.show();
         shortcutsStage.toFront();
         shortcutsStage.requestFocus();
+    }
+
+    private void showHistoryDialog() {
+        if (historyStage == null) {
+            buildHistoryStage();
+        }
+
+        if (getScene() != null && getScene().getWindow() != null && historyStage.getOwner() == null) {
+            historyStage.initOwner(getScene().getWindow());
+        }
+
+        historyStage.show();
+        historyStage.toFront();
+        historyStage.requestFocus();
     }
 
     private void showLineStatusHelp() {
@@ -848,6 +1158,9 @@ public class MainView extends BorderPane {
     }
 
     private VBox buildFamilyTabContent() {
+        Button removeSelectedButton = new Button("Remove Selected");
+        removeSelectedButton.setOnAction(event -> removeSelectedFamilyRelationship());
+
         TitledPane parentsPane = new TitledPane("Parents", buildParentsSection());
         parentsPane.getStyleClass().add("section-pane");
         parentsPane.setCollapsible(false);
@@ -860,7 +1173,14 @@ public class MainView extends BorderPane {
         spousesPane.getStyleClass().add("section-pane");
         spousesPane.setCollapsible(false);
 
-        VBox box = new VBox(8, parentsPane, childrenPane, spousesPane);
+        HBox topRow = new HBox(8, parentsPane, spousesPane);
+        HBox.setHgrow(parentsPane, Priority.ALWAYS);
+        HBox.setHgrow(spousesPane, Priority.ALWAYS);
+
+        ToolBar footerToolbar = new ToolBar(removeSelectedButton);
+        footerToolbar.getStyleClass().add("section-toolbar");
+
+        VBox box = new VBox(8, topRow, childrenPane, footerToolbar);
         box.setPadding(new Insets(10));
         box.getStyleClass().add("panel-surface");
         return box;
@@ -869,13 +1189,11 @@ public class MainView extends BorderPane {
     private VBox buildParentsSection() {
         Button addParentButton = new Button("Add Parent");
         Button editParentButton = new Button("Edit Parent Link");
-        Button removeParentButton = new Button("Remove Parent Link");
 
         addParentButton.setOnAction(event -> addParentToSelectedPerson());
         editParentButton.setOnAction(event -> editSelectedParentLink());
-        removeParentButton.setOnAction(event -> removeSelectedParentLink());
 
-        ToolBar toolbar = new ToolBar(addParentButton, editParentButton, removeParentButton);
+        ToolBar toolbar = new ToolBar(addParentButton, editParentButton);
         toolbar.getStyleClass().add("section-toolbar");
         parentsTable.getStyleClass().add("compact-table");
         VBox box = new VBox(8, toolbar, parentsTable);
@@ -886,13 +1204,11 @@ public class MainView extends BorderPane {
     private VBox buildChildrenSection() {
         Button addChildButton = new Button("Add Child");
         Button editChildButton = new Button("Edit Child Link");
-        Button removeChildButton = new Button("Remove Child Link");
 
         addChildButton.setOnAction(event -> addChildToSelectedPerson());
         editChildButton.setOnAction(event -> editSelectedChildLink());
-        removeChildButton.setOnAction(event -> removeSelectedChildLink());
 
-        ToolBar toolbar = new ToolBar(addChildButton, editChildButton, removeChildButton);
+        ToolBar toolbar = new ToolBar(addChildButton, editChildButton);
         toolbar.getStyleClass().add("section-toolbar");
         childrenTable.getStyleClass().add("compact-table");
         VBox box = new VBox(8, toolbar, childrenTable);
@@ -903,13 +1219,11 @@ public class MainView extends BorderPane {
     private VBox buildSpousesSection() {
         Button addSpouseButton = new Button("Add Spouse");
         Button editSpouseButton = new Button("Edit Spouse Link");
-        Button removeSpouseButton = new Button("Remove Spouse Link");
 
         addSpouseButton.setOnAction(event -> addSpouseToSelectedPerson());
         editSpouseButton.setOnAction(event -> editSelectedSpouseLink());
-        removeSpouseButton.setOnAction(event -> removeSelectedSpouseLink());
 
-        ToolBar toolbar = new ToolBar(addSpouseButton, editSpouseButton, removeSpouseButton);
+        ToolBar toolbar = new ToolBar(addSpouseButton, editSpouseButton);
         toolbar.getStyleClass().add("section-toolbar");
         spousesTable.getStyleClass().add("compact-table");
         VBox box = new VBox(8, toolbar, spousesTable);
@@ -960,7 +1274,7 @@ public class MainView extends BorderPane {
                 reasonColumn
         );
         eligibilityTable.setPlaceholder(new Label("No eligibility rows."));
-        eligibilityTable.setFixedCellSize(23);
+        eligibilityTable.setFixedCellSize(32);
     }
 
     private void configureWorkQueueTable() {
@@ -984,48 +1298,38 @@ public class MainView extends BorderPane {
         );
         fsPidColumn.setPrefWidth(140);
 
-        TableColumn<WorkQueueRow, String> triggerColumn = new TableColumn<>("Trigger");
-        triggerColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getTriggerLabel()))
-        );
-        triggerColumn.setPrefWidth(220);
+        TableColumn<WorkQueueRow, WorkQueueRow> flagsColumn = new TableColumn<>("Flags");
+        flagsColumn.setCellValueFactory(data -> new javafx.beans.property.ReadOnlyObjectWrapper<>(data.getValue()));
+        flagsColumn.setCellFactory(column -> new TableCell<>() {
+            @Override
+            protected void updateItem(WorkQueueRow item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
 
-        TableColumn<WorkQueueRow, String> parentsColumn = new TableColumn<>("Parents");
-        parentsColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(String.valueOf(data.getValue().getParentCount()))
-        );
-        parentsColumn.setPrefWidth(80);
-
-        TableColumn<WorkQueueRow, String> childrenColumn = new TableColumn<>("Children");
-        childrenColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(String.valueOf(data.getValue().getChildCount()))
-        );
-        childrenColumn.setPrefWidth(80);
-
-        TableColumn<WorkQueueRow, String> spousesColumn = new TableColumn<>("Spouses");
-        spousesColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(String.valueOf(data.getValue().getSpouseCount()))
-        );
-        spousesColumn.setPrefWidth(80);
-
-        TableColumn<WorkQueueRow, String> reasonColumn = new TableColumn<>("Reason");
-        reasonColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getReason()))
-        );
-        reasonColumn.setPrefWidth(460);
+                FlowPane badges = buildWorkQueueBadgePane(item);
+                setText(null);
+                setGraphic(badges);
+                setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+            }
+        });
+        flagsColumn.setPrefWidth(320);
 
         workQueueTable.getColumns().addAll(
                 bucketColumn,
                 nameColumn,
                 fsPidColumn,
-                triggerColumn,
-                parentsColumn,
-                childrenColumn,
-                spousesColumn,
-                reasonColumn
+                flagsColumn
         );
+        workQueueTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         workQueueTable.setPlaceholder(new Label("No work queue items."));
-        workQueueTable.setFixedCellSize(23);
+        workQueueTable.setFixedCellSize(44);
+        workQueueTable.getSelectionModel().selectedItemProperty().addListener((obs, oldValue, newValue) ->
+                updateWorkQueuePreview(newValue)
+        );
 
         workQueueTable.setRowFactory(table -> {
             TableRow<WorkQueueRow> row = new TableRow<>();
@@ -1046,6 +1350,155 @@ public class MainView extends BorderPane {
             });
             return row;
         });
+    }
+
+    private FlowPane buildWorkQueueBadgePane(WorkQueueRow row) {
+        FlowPane badges = new FlowPane();
+        badges.setHgap(4);
+        badges.setVgap(4);
+
+        addWorkQueueBadge(badges, "Open", "work-queue-badge-open", row.hasOpenOrdinances());
+        addWorkQueueBadge(badges, "Reserved", "work-queue-badge-reserved", row.hasReservedOrdinances());
+        addWorkQueueBadge(badges, "110+", "work-queue-badge-age", row.isBornMoreThan110YearsAgo());
+        addWorkQueueBadge(badges, "Less than 2 Parents", "work-queue-badge-missing", row.hasFewerThanTwoParents());
+        addWorkQueueBadge(
+                badges,
+                "No Children",
+                "work-queue-badge-missing",
+                !row.hasConnectedChildren() && !row.isConfirmedNoChildren()
+        );
+        addWorkQueueBadge(
+                badges,
+                "No Spouse",
+                "work-queue-badge-missing",
+                !row.hasConnectedSpouses() && !row.isConfirmedNoSpouse()
+        );
+        addWorkQueueBadge(badges, "Non-blood", "work-queue-badge-status", row.isNonBloodRelative());
+        addWorkQueueBadge(badges, "No More Findable", "work-queue-badge-status", row.isNoMoreFindable());
+
+        return badges;
+    }
+
+    private void addWorkQueueBadge(FlowPane pane, String text, String styleClass, boolean include) {
+        if (!include) {
+            return;
+        }
+
+        Label badge = new Label(text);
+        badge.getStyleClass().addAll("work-queue-badge", styleClass);
+        pane.getChildren().add(badge);
+    }
+
+    private VBox buildPreviewField(String labelText, Label valueLabel) {
+        Label label = new Label(labelText);
+        label.getStyleClass().add("selected-person-prefix");
+
+        VBox box = new VBox(2, label, valueLabel);
+        box.getStyleClass().add("detail-card");
+        return box;
+    }
+
+    private void reconcileWorkQueueSelectionAfterFilter() {
+        WorkQueueRow selected = workQueueTable.getSelectionModel().getSelectedItem();
+        if (selected != null) {
+            boolean stillVisible = workQueueTable.getItems().stream()
+                    .anyMatch(row -> Objects.equals(row.getPersonId(), selected.getPersonId()));
+            if (stillVisible) {
+                updateWorkQueuePreview(selected);
+                return;
+            }
+        }
+
+        if (!workQueueTable.getItems().isEmpty()) {
+            workQueueTable.getSelectionModel().selectFirst();
+        } else {
+            workQueueTable.getSelectionModel().clearSelection();
+            updateWorkQueuePreview(null);
+        }
+    }
+
+    private void updateWorkQueuePreview(WorkQueueRow row) {
+        if (row == null) {
+            workQueuePreviewNameValue.setText("Select a work queue row.");
+            workQueuePreviewFsPidValue.setText("");
+            workQueuePreviewBucketValue.setText("");
+            workQueuePreviewTriggerValue.setText("");
+            workQueuePreviewRelationshipsValue.setText("");
+            workQueuePreviewReasonValue.setText("");
+            workQueuePreviewBadgesPane.getChildren().clear();
+            return;
+        }
+
+        workQueuePreviewNameValue.setText(nullSafe(row.getDisplayName()));
+        workQueuePreviewFsPidValue.setText(nullSafe(row.getFsPid()));
+        workQueuePreviewBucketValue.setText(row.getQueueBucket() == null ? "" : row.getQueueBucket().name());
+        workQueuePreviewTriggerValue.setText(nullSafe(row.getTriggerLabel()));
+        workQueuePreviewRelationshipsValue.setText(
+                "Parents " + row.getParentCount()
+                        + " | Children " + row.getChildCount()
+                        + " | Spouses " + row.getSpouseCount()
+        );
+        workQueuePreviewReasonValue.setText(nullSafe(row.getReason()));
+        workQueuePreviewBadgesPane.getChildren().setAll(buildWorkQueueBadgePane(row).getChildren());
+    }
+
+    private WorkQueueRow getSelectedWorkQueueRow() {
+        return workQueueTable.getSelectionModel().getSelectedItem();
+    }
+
+    private void openSelectedWorkQueuePerson() {
+        WorkQueueRow row = getSelectedWorkQueueRow();
+        if (row == null || row.getPersonId() == null) {
+            showWarning("Please select a work queue row.");
+            return;
+        }
+
+        selectPersonInTable(row.getPersonId());
+    }
+
+    private void editSelectedWorkQueuePerson() {
+        WorkQueueRow row = getSelectedWorkQueueRow();
+        if (row == null || row.getPersonId() == null) {
+            showWarning("Please select a work queue row.");
+            return;
+        }
+
+        Person person = findPersonById(row.getPersonId());
+        if (person == null) {
+            showWarning("That person could not be opened.");
+            return;
+        }
+
+        selectPersonInTable(row.getPersonId());
+        editPerson(person);
+    }
+
+    private void showSelectedWorkQueuePersonDetails() {
+        if (!selectSelectedWorkQueuePerson()) {
+            return;
+        }
+
+        showPersonDetailsDialog();
+    }
+
+    private boolean selectSelectedWorkQueuePerson() {
+        WorkQueueRow row = getSelectedWorkQueueRow();
+        if (row == null || row.getPersonId() == null) {
+            showWarning("Please select a work queue row.");
+            return false;
+        }
+
+        selectPersonInTable(row.getPersonId());
+        return true;
+    }
+
+    private void selectWorkspaceTab(String tabName) {
+        for (Tab tab : workspaceTabs.getTabs()) {
+            if (Objects.equals(tab.getText(), tabName)) {
+                workspaceTabs.getSelectionModel().select(tab);
+                break;
+            }
+        }
     }
 
     private void openSelectedAncestorLine() {
@@ -1071,7 +1524,7 @@ public class MainView extends BorderPane {
     private void configurePedigreeTree() {
         pedigreeTree.setShowRoot(true);
         pedigreeTree.setRoot(new TreeItem<>(TreePersonNode.placeholder("Select a root person to view ancestry.")));
-        pedigreeTree.setFixedCellSize(24);
+        pedigreeTree.setFixedCellSize(32);
         pedigreeTree.setCellFactory(tree -> createTreeCell());
         attachTreeContextMenu(pedigreeTree);
         pedigreeTree.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
@@ -1084,7 +1537,7 @@ public class MainView extends BorderPane {
     private void configureDescendancyTree() {
         descendancyTree.setShowRoot(true);
         descendancyTree.setRoot(new TreeItem<>(TreePersonNode.placeholder("Select a root person to view descendancy.")));
-        descendancyTree.setFixedCellSize(24);
+        descendancyTree.setFixedCellSize(32);
         descendancyTree.setCellFactory(tree -> createTreeCell());
         attachTreeContextMenu(descendancyTree);
         descendancyTree.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
@@ -1204,23 +1657,24 @@ public class MainView extends BorderPane {
         parentColumn.setCellValueFactory(data ->
                 new ReadOnlyStringWrapper(nullSafe(data.getValue().getParentDisplayName()))
         );
-        parentColumn.setPrefWidth(220);
+        parentColumn.setPrefWidth(280);
 
         TableColumn<ParentChildLink, String> orderColumn = new TableColumn<>("Child Order");
         orderColumn.setCellValueFactory(data ->
                 new ReadOnlyStringWrapper(data.getValue().getChildOrder() == null ? "" : String.valueOf(data.getValue().getChildOrder()))
         );
-        orderColumn.setPrefWidth(100);
+        orderColumn.setPrefWidth(120);
 
-        TableColumn<ParentChildLink, String> notesColumn = new TableColumn<>("Notes");
-        notesColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getNotes()))
-        );
-        notesColumn.setPrefWidth(300);
-
-        parentsTable.getColumns().addAll(parentColumn, orderColumn, notesColumn);
+        parentsTable.getColumns().addAll(parentColumn, orderColumn);
+        parentsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         parentsTable.setPlaceholder(new Label("No parents linked."));
-        parentsTable.setFixedCellSize(23);
+        parentsTable.setFixedCellSize(32);
+        parentsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldValue, newValue) -> {
+            if (newValue != null) {
+                childrenTable.getSelectionModel().clearSelection();
+                spousesTable.getSelectionModel().clearSelection();
+            }
+        });
 
         parentsTable.setRowFactory(table -> {
             TableRow<ParentChildLink> row = new TableRow<>();
@@ -1238,23 +1692,24 @@ public class MainView extends BorderPane {
         childColumn.setCellValueFactory(data ->
                 new ReadOnlyStringWrapper(nullSafe(data.getValue().getChildDisplayName()))
         );
-        childColumn.setPrefWidth(220);
+        childColumn.setPrefWidth(280);
 
         TableColumn<ParentChildLink, String> orderColumn = new TableColumn<>("Child Order");
         orderColumn.setCellValueFactory(data ->
                 new ReadOnlyStringWrapper(data.getValue().getChildOrder() == null ? "" : String.valueOf(data.getValue().getChildOrder()))
         );
-        orderColumn.setPrefWidth(100);
+        orderColumn.setPrefWidth(120);
 
-        TableColumn<ParentChildLink, String> notesColumn = new TableColumn<>("Notes");
-        notesColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getNotes()))
-        );
-        notesColumn.setPrefWidth(300);
-
-        childrenTable.getColumns().addAll(childColumn, orderColumn, notesColumn);
+        childrenTable.getColumns().addAll(childColumn, orderColumn);
+        childrenTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         childrenTable.setPlaceholder(new Label("No children linked."));
-        childrenTable.setFixedCellSize(23);
+        childrenTable.setFixedCellSize(32);
+        childrenTable.getSelectionModel().selectedItemProperty().addListener((obs, oldValue, newValue) -> {
+            if (newValue != null) {
+                parentsTable.getSelectionModel().clearSelection();
+                spousesTable.getSelectionModel().clearSelection();
+            }
+        });
 
         childrenTable.setRowFactory(table -> {
             TableRow<ParentChildLink> row = new TableRow<>();
@@ -1276,7 +1731,7 @@ public class MainView extends BorderPane {
             }
             return new ReadOnlyStringWrapper(nullSafe(data.getValue().getOtherPersonDisplayName(selected.getPersonId())));
         });
-        spouseColumn.setPrefWidth(220);
+        spouseColumn.setPrefWidth(260);
 
         TableColumn<SpouseLink, String> marriageDateColumn = new TableColumn<>("Marriage Date");
         marriageDateColumn.setCellValueFactory(data ->
@@ -1292,39 +1747,20 @@ public class MainView extends BorderPane {
         );
         sealingStatusColumn.setPrefWidth(140);
 
-        TableColumn<SpouseLink, String> sealingDateColumn = new TableColumn<>("Sealing Date");
-        sealingDateColumn.setCellValueFactory(data ->
-                new ReadOnlyStringWrapper(nullSafe(data.getValue().getSealingStatusDate()))
-        );
-        sealingDateColumn.setPrefWidth(140);
-
-        TableColumn<SpouseLink, String> notesColumn = new TableColumn<>("Notes");
-        notesColumn.setCellValueFactory(data -> {
-            String marriageNotes = nullSafe(data.getValue().getMarriageNotes());
-            String sealingNotes = nullSafe(data.getValue().getSealingNotes());
-
-            if (!marriageNotes.isBlank() && !sealingNotes.isBlank()) {
-                return new ReadOnlyStringWrapper("Marriage: " + marriageNotes + " | Sealing: " + sealingNotes);
-            }
-            if (!marriageNotes.isBlank()) {
-                return new ReadOnlyStringWrapper("Marriage: " + marriageNotes);
-            }
-            if (!sealingNotes.isBlank()) {
-                return new ReadOnlyStringWrapper("Sealing: " + sealingNotes);
-            }
-            return new ReadOnlyStringWrapper("");
-        });
-        notesColumn.setPrefWidth(320);
-
         spousesTable.getColumns().addAll(
                 spouseColumn,
                 marriageDateColumn,
-                sealingStatusColumn,
-                sealingDateColumn,
-                notesColumn
+                sealingStatusColumn
         );
+        spousesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         spousesTable.setPlaceholder(new Label("No spouses linked."));
-        spousesTable.setFixedCellSize(23);
+        spousesTable.setFixedCellSize(32);
+        spousesTable.getSelectionModel().selectedItemProperty().addListener((obs, oldValue, newValue) -> {
+            if (newValue != null) {
+                parentsTable.getSelectionModel().clearSelection();
+                childrenTable.getSelectionModel().clearSelection();
+            }
+        });
 
         spousesTable.setRowFactory(table -> {
             TableRow<SpouseLink> row = new TableRow<>();
@@ -1388,6 +1824,7 @@ public class MainView extends BorderPane {
 
             allPeople.setAll(personService.getAllPeople());
             peopleNavigatorPane.setPeople(allPeople);
+            reconcileNavigationLists();
             refreshWorkQueue();
 
             if (selectedPersonId != null) {
@@ -1418,6 +1855,29 @@ public class MainView extends BorderPane {
         } catch (Exception ex) {
             showError("Could not refresh people.", ex);
         }
+    }
+
+    private void reconcileNavigationLists() {
+        Map<Long, Person> peopleById = allPeople.stream()
+                .filter(person -> person.getPersonId() != null)
+                .collect(Collectors.toMap(Person::getPersonId, person -> person, (left, right) -> left));
+
+        pinnedPersonIds.removeIf(personId -> !peopleById.containsKey(personId));
+        recentPersonIds.removeIf(personId -> !peopleById.containsKey(personId));
+
+        pinnedPeople.setAll(
+                pinnedPersonIds.stream()
+                        .map(peopleById::get)
+                        .filter(Objects::nonNull)
+                        .toList()
+        );
+        recentPeople.setAll(
+                recentPersonIds.stream()
+                        .map(peopleById::get)
+                        .filter(Objects::nonNull)
+                        .toList()
+        );
+        peopleNavigatorPane.setPinnedPeople(pinnedPeople);
     }
 
     private void refreshWorkQueue() {
@@ -1907,6 +2367,61 @@ public class MainView extends BorderPane {
         if (!peopleNavigatorPane.selectPersonById(personId, true)) {
             showWarning("That person is not available in the active table.");
         }
+    }
+
+    private void pinSelectedPerson() {
+        Person selected = getSelectedPerson();
+        if (selected == null || selected.getPersonId() == null) {
+            showWarning("Please select a person to pin.");
+            return;
+        }
+
+        if (pinnedPersonIds.add(selected.getPersonId())) {
+            reconcileNavigationLists();
+        }
+    }
+
+    private void unpinSelectedPerson() {
+        Person selected = getSelectedPerson();
+        if (selected == null || selected.getPersonId() == null) {
+            showWarning("Please select a person to unpin.");
+            return;
+        }
+
+        if (pinnedPersonIds.remove(selected.getPersonId())) {
+            reconcileNavigationLists();
+            return;
+        }
+        showWarning("The selected person is not pinned.");
+    }
+
+    private void openSelectedHistoryPerson() {
+        Person selected = historyListView.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.getPersonId() == null) {
+            showWarning("Please select a recent person.");
+            return;
+        }
+        selectPersonInTable(selected.getPersonId());
+    }
+
+    private void pinSelectedHistoryPerson() {
+        Person selected = historyListView.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.getPersonId() == null) {
+            showWarning("Please select a recent person to pin.");
+            return;
+        }
+        if (pinnedPersonIds.add(selected.getPersonId())) {
+            reconcileNavigationLists();
+        }
+    }
+
+    private String buildPersonListLabel(Person person) {
+        String displayName = nullSafe(person == null ? null : person.getDisplayName());
+        if (displayName.isBlank()) {
+            displayName = "(Unnamed Person)";
+        }
+        String fsPid = nullSafe(person == null ? null : person.getFsPid()).trim();
+        return fsPid.isBlank() ? displayName : displayName + " [" + fsPid + "]";
     }
 
     private Long getSelectedAncestorLinePersonId() {
@@ -2496,6 +3011,24 @@ public class MainView extends BorderPane {
         }
     }
 
+    private void removeSelectedFamilyRelationship() {
+        if (parentsTable.getSelectionModel().getSelectedItem() != null) {
+            removeSelectedParentLink();
+            return;
+        }
+        if (childrenTable.getSelectionModel().getSelectedItem() != null) {
+            removeSelectedChildLink();
+            return;
+        }
+        if (spousesTable.getSelectionModel().getSelectedItem() != null) {
+            removeSelectedSpouseLink();
+            return;
+        }
+
+        showWarning("Please select a parent, child, or spouse link to remove.");
+    }
+
+
     private long resolveSpousePersonId(SpouseLinkDialog.Result input) {
         if (input.getSpousePersonId() != null) {
             return input.getSpousePersonId();
@@ -2850,14 +3383,7 @@ public class MainView extends BorderPane {
             return;
         }
 
-        Person currentRoot = getCurrentRootPerson();
-        if (currentRoot == null || currentRoot.getPersonId() == null) {
-            relationshipToRootValue.setText("");
-        } else if (currentRoot.getPersonId().equals(person.getPersonId())) {
-            relationshipToRootValue.setText("Self (active root)");
-        } else {
-            relationshipToRootValue.setText("Selected person; active root is " + nullSafe(currentRoot.getDisplayName()));
-        }
+        relationshipToRootValue.setText(buildRelationshipToRootText(person));
 
         StringBuilder builder = new StringBuilder();
         List<ParentChildLink> parents = relationshipService.getParentsForPerson(person.getPersonId());
@@ -2883,6 +3409,8 @@ public class MainView extends BorderPane {
         builder.append("Connected Spouses: ").append(spouses.isEmpty() ? "No" : "Yes (" + spouses.size() + ")").append('\n');
         builder.append("Confirmed No Children: ").append(person.isConfirmedNoChildren() ? "Yes" : "No").append('\n');
         builder.append("Confirmed No Spouse: ").append(person.isConfirmedNoSpouse() ? "Yes" : "No").append('\n');
+        builder.append("Non-blood Relative: ").append(person.isNonBloodRelative() ? "Yes" : "No").append('\n');
+        builder.append("No More Findable: ").append(person.isNoMoreFindable() ? "Yes" : "No").append('\n');
         builder.append("Reserved Ordinances: ").append(buildReservedOrdinanceSummary(person, ordinanceStatus, spouses)).append('\n');
         builder.append("Created At: ").append(nullSafe(person.getCreatedAt())).append('\n');
         builder.append("Updated At: ").append(nullSafe(person.getUpdatedAt())).append('\n');
@@ -2890,6 +3418,21 @@ public class MainView extends BorderPane {
         builder.append("Notes:\n").append(nullSafe(person.getNotes()));
 
         detailArea.setText(builder.toString());
+    }
+
+    private String buildRelationshipToRootText(Person person) {
+        if (person == null) {
+            return "";
+        }
+
+        Person currentRoot = getCurrentRootPerson();
+        if (currentRoot == null || currentRoot.getPersonId() == null) {
+            return "";
+        }
+        if (currentRoot.getPersonId().equals(person.getPersonId())) {
+            return "Self (active root)";
+        }
+        return "Active root: " + nullSafe(currentRoot.getDisplayName());
     }
 
     private String buildReservedOrdinanceSummary(Person person, PersonOrdinanceStatus ordinanceStatus, List<SpouseLink> spouses) {
@@ -2934,6 +3477,12 @@ public class MainView extends BorderPane {
             selectedPersonFsPidLabel.setText("");
             selectedPersonFsPidLabel.setManaged(false);
             selectedPersonFsPidLabel.setVisible(false);
+            selectedPersonRelationshipLabel.setText("");
+            selectedPersonRelationshipLabel.setManaged(false);
+            selectedPersonRelationshipLabel.setVisible(false);
+            selectedPersonFamilyCountsLabel.setText("");
+            selectedPersonFamilyCountsLabel.setManaged(false);
+            selectedPersonFamilyCountsLabel.setVisible(false);
             return;
         }
 
@@ -2946,6 +3495,19 @@ public class MainView extends BorderPane {
         selectedPersonFsPidLabel.setText(hasFsPid ? "FS PID " + fsPid : "");
         selectedPersonFsPidLabel.setManaged(hasFsPid);
         selectedPersonFsPidLabel.setVisible(hasFsPid);
+
+        String relationshipText = buildRelationshipToRootText(person).trim();
+        boolean hasRelationship = !relationshipText.isBlank();
+        selectedPersonRelationshipLabel.setText(hasRelationship ? relationshipText : "");
+        selectedPersonRelationshipLabel.setManaged(hasRelationship);
+        selectedPersonRelationshipLabel.setVisible(hasRelationship);
+
+        List<ParentChildLink> parents = relationshipService.getParentsForPerson(person.getPersonId());
+        List<ParentChildLink> children = relationshipService.getChildrenForPerson(person.getPersonId());
+        List<SpouseLink> spouses = relationshipService.getSpousesForPerson(person.getPersonId());
+        selectedPersonFamilyCountsLabel.setText("P " + parents.size() + "  C " + children.size() + "  S " + spouses.size());
+        selectedPersonFamilyCountsLabel.setManaged(true);
+        selectedPersonFamilyCountsLabel.setVisible(true);
     }
 
     private void clearSelectionDependentViews() {
